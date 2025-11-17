@@ -1,0 +1,907 @@
+---
+title: "main-analysis"
+author: "YG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.align = "center",
+                      fig.width = 12,
+                      fig.height = 6,
+                      dev = "png",
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error=TRUE, 
+                      cache = FALSE,
+                      include = TRUE)
+
+# set a CRAN mirror
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+```
+
+
+```{r libraries, echo=FALSE, include=FALSE}
+# clean all cached data
+rm(list = ls()) 
+
+# for getting standard beta hat and CI
+library(insight)
+
+library(report)
+
+# load all relevant packages for data tidying, analysis and plotting (e.g., dplyr, lubridate -- to convert date and time data)
+library(tidyverse) 
+
+# provide a mechanism for chaining commands with a new forward-pipe operator, %>%
+library(magrittr)
+
+# dependency package for lme4 
+library(Matrix)
+
+# fit linear and generalized linear mixed-effects models
+library(lme4)
+
+# provide p-values in type I, II or III anova and summary tables for lmer model fits (cf. lme4) via Satterthwaite's degrees of freedom method
+library(lmerTest)
+
+# flexibly restructure and aggregate data
+library(reshape2)
+
+#library(logistf)
+
+# provide some easy-to-use functions for creating and customizing 'ggplot2'- based publication ready plots
+# but we could set this aside at this point 
+# library(ggpubr)
+
+# provide geoms for ggplot2 to repel overlapping text labels
+# for latest features, download and install directly from git 
+# devtools::install_github("slowkow/ggrepel")
+library(ggrepel)
+
+# provide a number of user-level functions to work with "grid" graphics, notably to arrange multiple grid-based plots on a page, and draw tables
+library(gridExtra)
+library(cowplot)
+# reorder factor levels (including moving specified levels to front, ordering by first appearance, reversing, and randomly shuffling); modifies factor levels (including collapsing rare levels into other, 'anonymising', and manually 'recoding')
+library(forcats)
+
+# create interactive web graphics from 'ggplot2' graphs 
+library(plotly)
+
+# create US map 
+library(usmap)
+
+# generate summary table for the mixed effects model 
+library(sjPlot)
+
+# transform the data with matching strings 
+library(stringr)
+
+# check for multicolinearity among predictors
+library(car)
+
+# detect changes in the models and avoids redundant rerunning of models 
+library(digest)
+
+# beeswarm plots
+library(ggbeeswarm)
+
+library(Hmisc)
+```
+
+
+```{r constants, echo=FALSE, include=FALSE}
+# aesthetic defaults
+
+dodge_amt <- 0.9
+dodge_amt2 <- 0.5
+
+# set the theme for graphs 
+theme_set(
+  theme_minimal(base_size = 20) +  
+  theme(legend.position = "right",  
+        plot.title = element_text(face = "bold"),
+        axis.title.x = element_text(face = "bold"),
+        axis.title.y = element_text(face = "bold"),
+        axis.text.x = element_text(size = 20),
+        axis.text.y = element_text(size = 20),
+        # panel.grid.major = element_blank(), 
+        # panel.grid.minor = element_blank(),  
+        axis.ticks = element_line(color = "black"),  
+        axis.line = element_blank(),
+        axis.line.x.bottom = element_line(color = "black"),  
+        axis.line.y.left = element_line(color = "black"),
+        strip.background = element_rect(fill = "white", color = "black")))
+  # panel.background = element_rect(fill = "transparent")))
+```
+
+
+```{r accent-familiarity-error-detection-rate-analysis-sanity-checks}
+tryCatch({
+  # ---
+  # 1. Load Data
+  # ---
+  df_fb <- read_csv("./data/Exp1-DATA - FB.csv")
+  df_jb <- read_csv("./data/Exp1-DATA - JB.csv")
+  df_quest <- read_csv("./data/preprocessed/main_110425_random_fail_48subj_questionnaire_data.csv")
+  
+
+  # ---
+  # 2. Combine Experimental Data
+  # ---
+  df_exp_all <- bind_rows(df_fb, df_jb)
+
+  # ---
+  # 3. Mark Participants based on score (< 6/8 OR 4/7)
+  # ---
+  print("Applying new combined failure criterion (< 6/8 OR 4/7)...")
+  
+  df_exp_all <- df_exp_all %>%
+    mutate(
+      
+      comments = as.character(comments),
+      
+     
+      attention_score_8 = as.numeric(
+        str_extract(comments, "(?<=\\()\\d+(?=\\/8)")
+      ),
+      
+     
+      attention_score_7 = as.numeric(
+        str_extract(comments, "(?<=\\()\\d+(?=\\/7)")
+      )
+    )
+
+
+  failed_participants_8 <- df_exp_all %>%
+    filter(attention_score_8 < 6) %>%
+    pull(participant_id) %>%
+    unique()
+    
+  failed_participants_7 <- df_exp_all %>%
+    filter(attention_score_7 == 4) %>%
+    pull(participant_id) %>%
+    unique()
+  
+ 
+  failed_participants <- union(failed_participants_8, failed_participants_7)
+
+  print(paste("Found", length(failed_participants), "total unique participants who failed."))
+  print("Failed participant IDs:")
+  print(failed_participants)
+
+
+  df_exp_all <- df_exp_all %>%
+    mutate(attention_check_passed = !participant_id %in% failed_participants)
+  
+ 
+
+  # ---
+  # 4. Sanity Check
+  # ---
+  print("--- Sanity Check (New combined rule): Participants who Passed/Failed ---")
+  
+  status_counts <- df_exp_all %>%
+    distinct(participant_id, attention_check_passed) %>%
+    count(attention_check_passed)
+  
+  print(status_counts)
+ 
+
+  # ---
+  # 5. Join with Questionnaire Data
+  # ---
+  print("Joining with questionnaire data...")
+  
+  df_final_joined <- df_exp_all %>%
+    left_join(df_quest, by = "participant_id")
+})
+
+
+df_clean <- df_full %>%
+  filter(attention_check_passed == TRUE)
+
+print(paste("Analyzing", n_distinct(df_clean$participant_id), "participants who passed attention checks."))
+```
+
+
+```{r accent-familiarity-error-detection-rate-analysis}
+df_clean_attchp <- df_final_joined %>%
+  filter(attention_check_passed == TRUE)
+
+print(paste("Analyzing", n_distinct(df_clean_attchp$participant_id), "participants who passed attention checks."))
+
+
+# ---
+# 2. Deduplicate and Clean Data
+# ---
+# First, deduplicate to get one row per trial
+df_deduplicated_trials <- df_clean_attchp %>%
+  distinct(participant_id, question, .keep_all = TRUE)
+
+print(paste("Deduplicated to", nrow(df_deduplicated_trials), "unique trials for analysis."))
+
+# Apply your cleaning and filtering logic
+df_analysis_data <- df_deduplicated_trials %>%
+  
+  # Recode 'nanas' to 'nans'
+  mutate(
+    err_reported_clean = case_when(
+      err_reported == "nanas" ~ "nans",
+      TRUE ~ err_reported
+    )
+  ) %>%
+  # Filter OUT 's' instances
+  filter(err_reported_clean != "s") %>%
+  
+  # Filter for target trials and conditions
+  filter(stim_type == "target") %>% 
+  filter(condition.x %in% c("correct", "phon_err", "non_phon_err", "both_err")) %>%
+  
+  # Ensure we only use the main categories
+  filter(err_reported_clean %in% c("y", "nans", "nun"))
+  
+# ---
+# 3. Frequency Table (Replicates your spreadsheet)
+# ---
+print("--- Analysis 1: Frequency Table (Stimulus Type vs. Participant Report) ---")
+freq_table <- df_analysis_data %>%
+  count(condition.x, err_reported_clean) %>%
+  pivot_wider(names_from = err_reported_clean, values_from = n, values_fill = 0)
+
+print(freq_table)
+
+# ---
+# 4. Data Preparation for Plot
+# ---
+# This is the same as your code
+prop_data <- df_analysis_data %>%
+  count(condition.x, err_reported_clean) %>%
+  group_by(condition.x) %>%
+  mutate(Proportion = n / sum(n)) %>%
+  ungroup() %>%
+  
+  # Create labels for the legend
+  mutate(
+    err_reported_label = case_when(
+      err_reported_clean == "nans" ~ "Question has no errors",
+      err_reported_clean == "nun"  ~ "Unsure",
+      err_reported_clean == "y"    ~ "Question needs correction"
+    ),
+    # Order the stimulus types logically
+    condition.x = factor(condition.x, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
+  )
+
+# ---
+# 5. Create Grouped Bar Chart (Not Stacked)
+# ---
+print("Generating grouped bar chart...")
+
+p_grouped_chart <- ggplot(prop_data, 
+                       # Use the clean label for the fill color
+                       aes(x = condition.x, y = Proportion, fill = err_reported_label)) +
+  
+  # Use position_dodge() to place bars side-by-side
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black") +
+  
+  # Use a "beautiful" color palette (e.g., "Set2", "Pastel1", "Accent")
+  scale_fill_brewer(palette = "Set3") +
+  
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "Condition",
+    y = "Proportion of Responses",
+    fill = "Participant Response"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 16, face = "bold"),
+    plot.title = element_text(face = "bold"),
+    legend.title = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 14),
+    legend.position = "top"
+  )
+
+print(p_grouped_chart)
+ggsave("stimulus_vs_response_GROUPED_proportions.png", width = 10, height = 7)
+
+print("--- Analysis replication complete. ---")
+
+# error bars added for the group chart
+
+# ---
+# 2. Prepare Data for Plot 1 (NEW METHOD)
+# ---
+print("Preparing data for Plot 1 (calculating per-participant error)...")
+
+# 1. Create labels *first*
+df_analysis_labeled <- df_analysis_data %>%
+  mutate(
+    err_reported_label = case_when(
+      err_reported_clean == "nans" ~ "Question has no errors",
+      err_reported_clean == "nun"  ~ "Unsure",
+      err_reported_clean == "y"    ~ "Question needs correction"
+    ),
+    condition.x = factor(condition.x, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
+  )
+
+# 2. Calculate proportions *per participant*
+# We use complete() to ensure all 0s are filled in
+participant_props <- df_analysis_labeled %>%
+  # Count responses for each participant/condition/response_type
+  count(participant_id, condition.x, err_reported_label) %>%
+  
+  # Explicitly fill in 0s for missing combinations
+  complete(participant_id, condition.x, err_reported_label, fill = list(n = 0)) %>%
+  
+  # Calculate per-participant proportions
+  group_by(participant_id, condition.x) %>%
+  mutate(
+    Total_Trials = sum(n),
+    Proportion = n / Total_Trials
+  ) %>%
+  ungroup()
+
+# 3. Calculate Group Mean, N, and Standard Error
+plot_summary_with_error_grouped <- participant_props %>%
+  group_by(condition.x, err_reported_label) %>%
+  summarise(
+    N = n(),
+    Mean_Proportion = mean(Proportion, na.rm = TRUE),
+    SD = sd(Proportion, na.rm = TRUE),
+    SE = SD / sqrt(N),
+    .groups = "drop"
+  ) %>%
+  # Calculate the min/max for the error bars
+  mutate(
+    ymin = Mean_Proportion - SE,
+    ymax = Mean_Proportion + SE
+  )
+
+print("--- Plot Summary for Grouped Chart (Head) ---")
+print(head(plot_summary_with_error_grouped))
+
+
+# ---
+# 5. Create Grouped Bar Chart (Not Stacked)
+# ---
+print("Generating grouped bar chart with error bars...")
+
+p_grouped_chart <- ggplot(plot_summary_with_error_grouped, 
+                           aes(x = condition.x, 
+                               y = Mean_Proportion, # Use the new Mean
+                               fill = err_reported_label,
+                               # Add ymin/ymax
+                               ymin = ymin,
+                               ymax = ymax
+                           )) +
+  
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black") +
+  
+  # --- ADDED ERROR BARS ---
+  geom_errorbar(
+    position = position_dodge(width = 0.9), # Must match geom_bar's dodge
+    width = 0.25, # Width of the error bar "caps"
+    color = "black"
+  ) +
+  # --- END ADDED BARS ---
+  
+  scale_fill_brewer(palette = "Set3") + # Kept your 'Pastel1' palette
+  
+  scale_y_continuous(labels = scales::percent) +
+  labs(
+    x = "Condition",
+    y = "Proportion of Responses",
+    fill = "Participant Response"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 16, face = "bold"),
+    plot.title = element_text(face = "bold"),
+    legend.title = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 14),
+    legend.position = "top"
+  )
+
+print(p_grouped_chart)
+
+# second plot
+library(janitor)
+print("--- Analysis 2: Crosstab of Reported Error Type vs. Condition ---")
+print("Filtered for trials where participants reported 'y' (needs correction)")
+
+# These are the specific error types you want as columns
+err_types_to_analyze <- c("both", "np", "p")
+
+# First, create the main crosstab for *only* the specific error types
+main_crosstab <- df_analysis_data %>%
+  filter(err_reported_clean == "y") %>%
+  filter(err_type_response %in% c("both", "np", "p")) %>%
+  count(condition.x, err_type_response) %>%
+  pivot_wider(names_from = err_type_response, values_from = n) # No 'values_fill = 0'
+
+# Second, calculate the "Grand Total" column (all "y" responses)
+totals_y <- df_analysis_data %>%
+  filter(err_reported_clean == "y") %>%
+  count(condition.x, name = "Grand Total")
+
+# Third, join them together
+final_table <- totals_y %>%
+  left_join(main_crosstab, by = "condition.x") %>%
+  
+  # Re-order rows and columns to match your spreadsheet
+  mutate(condition.x = factor(condition.x, levels = c("both_err", "correct", "non_phon_err", "phon_err"))) %>%
+  arrange(condition.x) %>%
+  select(condition.x, both, np, p, `Grand Total`)
+
+# Finally, add the "Grand Total" row, which sums all numeric columns
+final_table_with_totals <- final_table %>%
+  adorn_totals(where = "row", name = "Grand Total")
+
+# Print the final, correct table
+print(final_table_with_totals)
+
+
+
+#### Plotting
+plot_data_summary <- tibble(
+  # This is the x-axis
+  Stimulus_Condition = factor(c(
+    "phon_err", 
+    "non_phon_err", 
+    "both_err", 
+    "both_err"
+  ), levels = c("phon_err", "non_phon_err", "both_err")),
+  
+  # This is the fill color
+  Error_Type_Detected = factor(c(
+    "phonological error", 
+    "nonphonological error", 
+    "phonological error", 
+    "nonphonological error"
+  )),
+  
+  # This is the y-axis
+  Proportion = c(
+    0.221198157, 
+    0.309178744, 
+    0.176190476, 
+    0.242857143
+  )
+)
+
+print("--- Data for Plot ---")
+print(plot_data_summary)
+
+# ---
+# 2. Create the Grouped Bar Chart
+# ---
+print("Generating grouped bar chart...")
+
+p_hit_rate_chart <- ggplot(plot_data_summary, 
+                           aes(x = Stimulus_Condition, y = Proportion, fill = Error_Type_Detected)) +
+  
+  # Use position_dodge() to place bars side-by-side
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black", linewidth = 0.2) +
+  
+  # Use a "beautiful" color palette
+  scale_fill_brewer(palette = "Set1") +
+  
+  # Format Y axis as percentage
+  scale_y_continuous(labels = scales::percent_format()) +
+  
+  # Add labels
+  labs(
+    x = "Condition",
+    y = "Proportion of Errors Detected",
+    fill = "Error Type Detected"
+  ) +
+  
+  # Apply theme
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 16, face = "bold"),
+    plot.title = element_text(face = "bold"),
+    legend.title = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 14),
+    legend.position = "top"
+  )
+
+# Print the plot
+print(p_hit_rate_chart)
+```
+
+
+```{r accent-familiarity-error-detection-rate-analysis-another-way-to-plot-data}
+# ---
+# 2. Calculate Stimuli Totals (The Denominators)
+# ---
+# We need the total number of stimuli for each condition (217, 207, 210)
+stimuli_totals <- df_analysis_data %>%
+  # Note: We do NOT filter for "y" here
+  count(condition.x) %>%
+  rename(Total_Stimuli = n)
+
+print("--- Total Stimuli per Condition (Denominators) ---")
+print(stimuli_totals)
+
+# ---
+# 3. Calculate Detections (The Numerators)
+# ---
+# Now we filter for "y" responses and define "detection"
+detections <- df_analysis_data %>%
+  filter(err_reported_clean == "y") %>%
+  
+  # Create new columns to define a "hit"
+  mutate(
+    # A "Phonological Error" is detected if they say "p" OR "both"
+    Phon_Detected = err_type_response %in% c("p", "both"),
+    
+    # A "Non-Phonological Error" is detected if they say "np" OR "both"
+    NonPhon_Detected = err_type_response %in% c("np", "both")
+  ) %>%
+  
+  # Group by condition and sum the hits
+  group_by(condition.x) %>%
+  summarise(
+    Phon_Detections = sum(Phon_Detected),
+    NonPhon_Detections = sum(NonPhon_Detected)
+  )
+
+print("--- Errors Detected per Condition (Numerators) ---")
+print(detections)
+
+# ---
+# 4. Join and Calculate Proportions
+# ---
+# This joins the numerators and denominators
+plot_data_summary <- stimuli_totals %>%
+  left_join(detections, by = "condition.x") %>%
+  
+  # Calculate the proportions from your stats
+  mutate(
+    `phonological error` = Phon_Detections / Total_Stimuli,
+    `nonphonological error` = NonPhon_Detections / Total_Stimuli
+  ) %>%
+  
+  # Filter out the "correct" condition which isn't plotted
+  filter(condition.x != "correct") %>%
+  
+  # Select only the columns we need
+  select(Stimulus_Condition = condition.x, `phonological error`, `nonphonological error`) %>%
+  
+  # Pivot to the "long" format for ggplot
+  pivot_longer(
+    cols = c(`phonological error`, `nonphonological error`),
+    names_to = "Error_Type_Detected",
+    values_to = "Proportion"
+  ) %>%
+  
+  # Filter out the NAs (e.g., non-phon errors for phon_err stimuli)
+  filter(!is.na(Proportion))
+
+
+#### Actual plotting:
+p_hit_rate_chart <- ggplot(plot_data_summary, 
+                           aes(x = Stimulus_Condition, y = Proportion, fill = Error_Type_Detected)) +
+  
+  # Use position_dodge() to place bars side-by-side
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black", linewidth = 0.2) +
+  
+  # Use a "beautiful" color palette
+  scale_fill_manual(values = c("phonological error" = "skyblue", 
+                               "nonphonological error" = "salmon")) +
+  
+  # Format Y axis as percentage
+  scale_y_continuous(labels = scales::percent_format()) +
+  
+  # Add labels
+  labs(
+    x = "Condition",
+    y = "Proportion of Errors Detected",
+    fill = "Error Type Detected"
+  ) +
+  
+  # Apply theme
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 16, face = "bold"),
+    plot.title = element_text(face = "bold"),
+    legend.title = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 14),
+    legend.position = "top"
+  )
+
+# Print the plot
+print(p_hit_rate_chart)
+
+
+#######ERROR BARS
+
+# ---
+# 1. Load and Clean Base Data
+# ---
+print("Loading and cleaning base data...")
+# (Assuming df_analysis_base is already created from previous steps)
+# (If not, re-run the loading/cleaning code)
+
+
+# 2. Prepare Data for Plot 2 (Per-Participant)
+# ---
+print("Preparing data for Plot 2 (calculating per-participant error)...")
+
+# 1. Calculate Stimuli Totals per participant
+stimuli_totals_pp <- df_analysis_data %>%
+  group_by(participant_id, condition.x) %>%
+  count(name = "Total_Stimuli")
+
+# 2. Calculate Detections per participant
+detections_pp <- df_analysis_data %>%
+  filter(err_reported_clean == "y") %>%
+  mutate(
+    Phon_Detected = err_type_response %in% c("p", "both"),
+    NonPhon_Detected = err_type_response %in% c("np", "both")
+  ) %>%
+  group_by(participant_id, condition.x) %>%
+  summarise(
+    Phon_Detections = sum(Phon_Detected),
+    NonPhon_Detections = sum(NonPhon_Detected),
+    .groups = "drop"
+  )
+
+# 3. Join and Calculate Proportions per participant
+participant_hit_rates <- stimuli_totals_pp %>%
+  left_join(detections_pp, by = c("participant_id", "condition.x")) %>%
+  mutate(
+    Phon_Detections = ifelse(is.na(Phon_Detections), 0, Phon_Detections),
+    NonPhon_Detections = ifelse(is.na(NonPhon_Detections), 0, NonPhon_Detections)
+  ) %>%
+  mutate(
+    `phonological error` = Phon_Detections / Total_Stimuli,
+    `nonphonological error` = NonPhon_Detections / Total_Stimuli
+  ) %>%
+  filter(condition.x != "correct") %>%
+  select(participant_id, Stimulus_Condition = condition.x, `phonological error`, `nonphonological error`) %>%
+  pivot_longer(
+    cols = c(`phonological error`, `nonphonological error`),
+    names_to = "Error_Type_Detected",
+    values_to = "Proportion"
+  )
+
+# 4. Calculate Group Mean, SE, and **NEW "HITS ONLY" FILTER**
+plot_summary_with_error <- participant_hit_rates %>%
+
+  # --- THIS IS THE NEW FILTER ---
+  # Filter to only show "hits" and remove "false alarms"
+  filter(
+    (Stimulus_Condition == "phon_err" & Error_Type_Detected == "phonological error") |
+    (Stimulus_Condition == "non_phon_err" & Error_Type_Detected == "nonphonological error") |
+    (Stimulus_Condition == "both_err") # Keep both bars for the 'both_err' condition
+  ) %>%
+  # --- END NEW FILTER ---
+
+  group_by(Stimulus_Condition, Error_Type_Detected) %>%
+  summarise(
+    N = n(),
+    Mean_Proportion = mean(Proportion, na.rm = TRUE),
+    SD = sd(Proportion, na.rm = TRUE),
+    SE = SD / sqrt(N),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ymin = Mean_Proportion - SE,
+    ymax = Mean_Proportion + SE
+  ) %>%
+  mutate(Stimulus_Condition = factor(Stimulus_Condition, 
+                                     levels = c("phon_err", "non_phon_err", "both_err")))
+
+print("--- Plot Summary with Error Bars (HITS ONLY) ---")
+print(plot_summary_with_error)
+
+# ---
+# 5. Create Plot 2 (Hit Rate) - "Hits Only"
+# ---
+# The plotting code itself doesn't need to change.
+# It will now receive data that has already been filtered.
+p_hit_rate_chart <- ggplot(plot_summary_with_error, 
+                           aes(x = Stimulus_Condition, 
+                               y = Mean_Proportion,
+                               fill = Error_Type_Detected,
+                               ymin = ymin,
+                               ymax = ymax
+                           )) +
+  
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black", linewidth = 0.2) +
+  
+  geom_errorbar(
+    position = position_dodge(width = 0.9), 
+    width = 0.25,
+    color = "black"
+  ) +
+  
+  scale_fill_manual(values = c("phonological error" = "skyblue", 
+                               "nonphonological error" = "salmon")) +
+  
+  scale_y_continuous(labels = scales::percent_format()) +
+  labs(
+    x = "Condition",
+    y = "Proportion of Errors Detected",
+    fill = "Error Type Detected"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title = element_text(size = 16, face = "bold"),
+    plot.title = element_text(face = "bold", size = 16),
+    legend.title = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 14),
+    legend.position = "top"
+  )
+
+print(p_hit_rate_chart)
+```
+
+
+```{r accent-familiarity-interacts-with-error-detection-rate-analysis}
+# Isolate the familiarity data from the full joined file
+df_familiarity <- df_final_joined %>%
+  filter(stimuli_presented == "exposure_spanish_accent") %>%
+  select(participant_id, response_value.y) %>%
+  distinct() %>%
+  rename(exposure_spanish_accent = response_value.y)
+
+# Define the order for your familiarity levels
+familiarity_levels <- c("Never", "Sometimes", "Half the time", "Often", "All the time")
+
+# Join familiarity data with our clean trial data
+df_analysis_with_familiarity <- df_analysis_data %>%
+  left_join(df_familiarity, by = "participant_id") %>%
+  # Convert to an ordered factor (like your example)
+  mutate(exposure_spanish_accent = factor(exposure_spanish_accent, 
+                                          levels = familiarity_levels)) %>%
+  # Remove any participants who didn't answer this question
+  filter(!is.na(exposure_spanish_accent))
+
+print(paste("Analyzing data for", n_distinct(df_analysis_with_familiarity$participant_id), "participants with familiarity data."))
+
+# ---
+# 3. Plot 1 (Grouped Chart) by Familiarity
+# ---
+print("Generating Plot 1 (Grouped) by Familiarity...")
+
+# 1. Calculate proportions, grouping by familiarity
+prop_data_familiarity <- df_analysis_with_familiarity %>%
+  count(exposure_spanish_accent, condition.x, err_reported_clean) %>%
+  group_by(exposure_spanish_accent, condition.x) %>%
+  mutate(Proportion = n / sum(n)) %>%
+  ungroup() %>%
+  
+  # Create labels
+  mutate(
+    err_reported_label = case_when(
+      err_reported_clean == "nans" ~ "Question has no errors",
+      err_reported_clean == "nun"  ~ "Unsure",
+      err_reported_clean == "y"    ~ "Question needs correction"
+    ),
+    condition.x = factor(condition.x, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
+  )
+
+# 2. Create the plot with facet_wrap()
+p_grouped_chart_familiarity <- ggplot(prop_data_familiarity, 
+                       aes(x = condition.x, y = Proportion, fill = err_reported_label)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black") +
+  scale_fill_brewer(palette = "Pastel1") +
+  scale_y_continuous(labels = scales::percent) +
+  
+  # --- THIS IS THE NEW LINE ---
+  facet_wrap(~ exposure_spanish_accent) +
+  # --- END NEW LINE ---
+  
+  labs(
+    x = "Condition",
+    y = "Proportion of Responses",
+    fill = "Participant Response"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 12),
+    axis.title = element_text(size = 14, face = "bold"),
+    plot.title = element_text(face = "bold", size = 16),
+    legend.title = element_text(face = "bold", size = 12),
+    legend.text = element_text(size = 12),
+    legend.position = "top",
+    strip.text = element_text(size = 12, face = "bold", color = "black") # Controls the facet labels
+  )
+
+print(p_grouped_chart_familiarity)
+ggsave("stimulus_vs_response_GROUPED_by_familiarity.png", width = 12, height = 9)
+
+# ---
+# 4. Plot 2 (Hit Rate) by Familiarity
+# ---
+print("Generating Plot 2 (Hit Rate) by Familiarity...")
+
+# 1. Calculate Stimuli Totals (Denominators) by familiarity
+stimuli_totals_fam <- df_analysis_with_familiarity %>%
+  group_by(exposure_spanish_accent, condition.x) %>%
+  count(name = "Total_Stimuli")
+
+# 2. Calculate Detections (Numerators) by familiarity
+detections_fam <- df_analysis_with_familiarity %>%
+  filter(err_reported_clean == "y") %>%
+  mutate(
+    Phon_Detected = err_type_response %in% c("p", "both"),
+    NonPhon_Detected = err_type_response %in% c("np", "both")
+  ) %>%
+  group_by(exposure_spanish_accent, condition.x) %>%
+  summarise(
+    Phon_Detections = sum(Phon_Detected),
+    NonPhon_Detections = sum(NonPhon_Detected),
+    .groups = "drop"
+  )
+
+# 3. Join and Calculate Proportions
+plot_data_summary_fam <- stimuli_totals_fam %>%
+  left_join(detections_fam, by = c("exposure_spanish_accent", "condition.x")) %>%
+  mutate(
+    `phonological error` = Phon_Detections / Total_Stimuli,
+    `nonphonological error` = NonPhon_Detections / Total_Stimuli
+  ) %>%
+  filter(condition.x != "correct") %>%
+  select(Stimulus_Condition = condition.x, exposure_spanish_accent, `phonological error`, `nonphonological error`) %>%
+  pivot_longer(
+    cols = c(`phonological error`, `nonphonological error`),
+    names_to = "Error_Type_Detected",
+    values_to = "Proportion"
+  ) %>%
+  filter(!is.na(Proportion)) %>% 
+# --- THIS IS THE NEW LINE ---
+  # Re-order the x-axis from left to right
+  mutate(Stimulus_Condition = factor(Stimulus_Condition, 
+                                     levels = c("phon_err", "non_phon_err", "both_err")))
+  # --- END NEW LINE ---
+
+
+# 4. Create the plot with facet_wrap()
+p_hit_rate_chart_familiarity <- ggplot(plot_data_summary_fam, 
+                           aes(x = Stimulus_Condition, y = Proportion, fill = Error_Type_Detected)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black", linewidth = 0.2) +
+  scale_fill_brewer(palette = "Set2") +
+  scale_y_continuous(labels = scales::percent_format()) +
+  
+  # --- THIS IS THE NEW LINE ---
+  facet_wrap(~ exposure_spanish_accent) +
+  # --- END NEW LINE ---
+  
+  labs(
+    x = "Condition",
+    y = "Proportion of Errors Detected",
+    fill = "Error Type Detected"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    plot.title = element_text(face = "bold", size = 16),
+    legend.title = element_text(face = "bold", size = 14),
+    legend.text = element_text(size = 14),
+    strip.text = element_text(size = 14, face = "bold", color = "black"), 
+    axis.title = element_text(size = 14, face = "bold"),
+    legend.position = "top"
+  )
+
+print(p_hit_rate_chart_familiarity)
+ggsave("hit_rate_by_stimulus_by_familiarity.png", width = 12, height = 9)
+print("--- Analysis by familiarity complete. ---")
+```
+

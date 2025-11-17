@@ -1,0 +1,109 @@
+group_id,participant_id,response_value,stimuli_presented,stimulus_files_presented,block,item_base,item_type,condition,nonphon_err_type,phon_err_details,answer,second_attempt_used,trial_num_sequential
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,Male,gender,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,1
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,['White'],race/ethnicity,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,2
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,High school,highest_level_edu,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,3
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,['English'],native_language,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,4
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,Yes,same_state_5_year,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,5
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,Yes,same_state_5_year_yes,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,6
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,Right,handedness,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,7
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,No,hearing,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,8
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,Yes,vision,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,9
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,No,langDis,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,10
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,No,learnDis,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,11
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,No,attention,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,12
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,No,headInjury,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,13
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,No,neuroImpair,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,14
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,No,household_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,15
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,No,current_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,16
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,Never,exposure_spanish,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,17
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,Never,exposure_spanish_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,18
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,34,age,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,19
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,Michigan,origin_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,20
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,48867,origin_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,21
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,Michigan,current_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,22
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,48867,current_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,23
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,NA,same_state_5_year_no,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,24
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,Astigmatism,diseaseDetail,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,25
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,Typical middle America,most_frequent_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,26
+Group_4,2db1a218e13ea4f1eb0a7873d39d7ec7a148291b196d67f717c2c68b7401c531,I took Spanish in my Freshmen year of high school,additional_language_experience,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,27
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,Male,gender,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,1
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,"['Asian', 'White']",race/ethnicity,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,2
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,2- or 4-year college degree,highest_level_edu,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,3
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,['English'],native_language,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,4
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,Yes,same_state_5_year,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,5
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,Yes,same_state_5_year_yes,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,6
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,Left,handedness,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,7
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,No,hearing,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,8
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,No,vision,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,9
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,No,langDis,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,10
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,No,learnDis,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,11
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,No,attention,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,12
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,No,headInjury,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,13
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,No,neuroImpair,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,14
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,No,household_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,15
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,No,current_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,16
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,Sometimes,exposure_spanish,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,17
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,Sometimes,exposure_spanish_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,18
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,31,age,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,19
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,New York,origin_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,20
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,"Patchogue, NY",origin_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,21
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,Ohio,current_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,22
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,45840,current_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,23
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,NA,same_state_5_year_no,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,24
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,NA,diseaseDetail,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,25
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,"My Wife American , My mother in law Indian, My brother American",most_frequent_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,26
+Group_2,680c376ed2436b9e832fedcfdced9ce41cbe335135ba6750a908ebcc452f5505,NA,additional_language_experience,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,27
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,Female,gender,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,1
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,['White'],race/ethnicity,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,2
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,Some college,highest_level_edu,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,3
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,['English'],native_language,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,4
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,Yes,same_state_5_year,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,5
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,Yes,same_state_5_year_yes,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,6
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,Right,handedness,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,7
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,No,hearing,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,8
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,No,vision,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,9
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,No,langDis,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,10
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,No,learnDis,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,11
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,No,attention,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,12
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,No,headInjury,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,13
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,No,neuroImpair,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,14
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,No,household_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,15
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,No,current_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,16
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,Sometimes,exposure_spanish,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,17
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,Sometimes,exposure_spanish_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,18
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,40,age,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,19
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,PA,origin_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,20
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,17547,origin_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,21
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,PA,current_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,22
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,18103,current_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,23
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,na,same_state_5_year_no,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,24
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,na,diseaseDetail,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,25
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,none,most_frequent_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,26
+Group_3,83592b243e0b33499f77fd5b5a061686f5e86811496a54083a6b03c4416a34e8,none,additional_language_experience,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,27
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,Male,gender,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,1
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,['White'],race/ethnicity,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,2
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,2- or 4-year college degree,highest_level_edu,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,3
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,['English'],native_language,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,4
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,Yes,same_state_5_year,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,5
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,Yes,same_state_5_year_yes,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,6
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,Right,handedness,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,7
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,No,hearing,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,8
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,No,vision,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,9
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,No,langDis,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,10
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,No,learnDis,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,11
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,No,attention,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,12
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,No,headInjury,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,13
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,No,neuroImpair,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,14
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,No,household_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,15
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,No,current_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,16
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,Sometimes,exposure_spanish,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,17
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,Sometimes,exposure_spanish_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,18
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,30,age,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,19
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,California,origin_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,20
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,94523,origin_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,21
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,California,current_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,22
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,94523,current_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,23
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,NA,same_state_5_year_no,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,24
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,NA,diseaseDetail,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,25
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,American,most_frequent_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,26
+Group_1,e7bfb5a268a84a83fc81398b4bc68c92c7d4e9fd6719455de3ee1b21b3dea033,I had a chinese roommate for 1 year,additional_language_experience,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,27

@@ -11,3 +11,6 @@
 # 4. Un-ignore the 'data' folder AND everything in it
 !data/
 !data/**
+.Rproj.user
+
+*.DS_Store

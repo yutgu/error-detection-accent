@@ -4,36 +4,136 @@ output: html_document
 date: "`r Sys.Date()`"
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.align = "center",
+                      fig.width = 12,
+                      fig.height = 6,
+                      dev = "png",
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error=TRUE, 
+                      cache = FALSE,
+                      include = TRUE)
+
+# set a CRAN mirror
+options(repos = c(CRAN = "https://cloud.r-project.org"))
 ```
 
 
-```{r libraries}
-library(tidyverse)
+```{r libraries, echo=FALSE, include=FALSE}
+# clean all cached data
+rm(list = ls()) 
+
+# for getting standard beta hat and CI
+library(insight)
+
+library(report)
+
+# load all relevant packages for data tidying, analysis and plotting (e.g., dplyr, lubridate -- to convert date and time data)
+library(tidyverse) 
+
+# provide a mechanism for chaining commands with a new forward-pipe operator, %>%
+library(magrittr)
+
+# dependency package for lme4 
+library(Matrix)
+
+# fit linear and generalized linear mixed-effects models
+library(lme4)
+
+# provide p-values in type I, II or III anova and summary tables for lmer model fits (cf. lme4) via Satterthwaite's degrees of freedom method
+library(lmerTest)
+
+# flexibly restructure and aggregate data
+library(reshape2)
+
+#library(logistf)
+
+# provide some easy-to-use functions for creating and customizing 'ggplot2'- based publication ready plots
+# but we could set this aside at this point 
+# library(ggpubr)
+
+# provide geoms for ggplot2 to repel overlapping text labels
+# for latest features, download and install directly from git 
+# devtools::install_github("slowkow/ggrepel")
+library(ggrepel)
+
+# provide a number of user-level functions to work with "grid" graphics, notably to arrange multiple grid-based plots on a page, and draw tables
+library(gridExtra)
+library(cowplot)
+# reorder factor levels (including moving specified levels to front, ordering by first appearance, reversing, and randomly shuffling); modifies factor levels (including collapsing rare levels into other, 'anonymising', and manually 'recoding')
+library(forcats)
+
+# create interactive web graphics from 'ggplot2' graphs 
+library(plotly)
+
+# create US map 
+library(usmap)
+
+# generate summary table for the mixed effects model 
+library(sjPlot)
+
+# transform the data with matching strings 
+library(stringr)
+
+# check for multicolinearity among predictors
+library(car)
+
+# detect changes in the models and avoids redundant rerunning of models 
+library(digest)
+
+# beeswarm plots
+library(ggbeeswarm)
+
+library(Hmisc)
 ```
 
 
-```{r}
+```{r constants, echo=FALSE, include=FALSE}
+# aesthetic defaults
+
+dodge_amt <- 0.9
+dodge_amt2 <- 0.5
+
+# set the theme for graphs 
+theme_set(
+  theme_minimal(base_size = 20) +  
+  theme(legend.position = "right",  
+        plot.title = element_text(face = "bold"),
+        axis.title.x = element_text(face = "bold"),
+        axis.title.y = element_text(face = "bold"),
+        axis.text.x = element_text(size = 20),
+        axis.text.y = element_text(size = 20),
+        # panel.grid.major = element_blank(), 
+        # panel.grid.minor = element_blank(),  
+        axis.ticks = element_line(color = "black"),  
+        axis.line = element_blank(),
+        axis.line.x.bottom = element_line(color = "black"),  
+        axis.line.y.left = element_line(color = "black"),
+        strip.background = element_rect(fill = "white", color = "black")))
+  # panel.background = element_rect(fill = "transparent")))
+```
+
+
+
+
+```{r-function-preprocess-experiment-data}
+
 process_experiment_data <- function(data_filepath, 
-                                    stimulus_filepath, 
-                                    output_prefix,
-                                    trial_outlier_min = 5,
-                                    trans_outlier_min = 10,
-                                    att_outlier_min = 2) {
+                                    stimulus_filepath
+                                    # trial_outlier_min = 5,
+                                    # trans_outlier_min = 10,
+                                    # att_outlier_min = 2
+                                    ) {
   
-  # --- 1. Load Data ---
-  print(paste("--- Loading data from:", data_filepath, "---"))
+  # load data
   data <- read_csv(data_filepath)
   
-  # --- 2. Initial Data Inspection ---
-  print("--- All Variable Names ---")
+ # initial data inspection
   print(colnames(data))
-  print("--- Total Unique Participants (Raw) ---")
   print(paste("N =", n_distinct(data$participant_id)))
-  print("--- Unique Block Names ---")
   print(unique(data$block_name))
-  print("--- Unique Eligibility Values ---")
   print(unique(data$branch_eligiblenotEligible))
   
   data_clean <- data %>%
@@ -41,20 +141,18 @@ process_experiment_data <- function(data_filepath,
   
   print(paste("N of Eligible Participants =", n_distinct(data_clean$participant_id)))
   
-  # --- 3. Data Preprocessing ---
-  print("--- Preprocessing data... ---")
+ # data processing 
   att_check_good_items <- c("fill_25", "fill_26", "fill_27", "fill_28")
   att_check_err_items <- c("fill_29", "fill_30", "fill_31", "fill_32")
   
 d_processed <- data_clean %>%
   mutate(
     Block = case_when(
-      # --- Main Task Blocks ---
-      str_starts(trial_template, "Prac_Trivia") ~ "Prac_Trivia",
-      str_starts(block_name, "Trivia_List") ~ "Trivia_List",
+      # str_starts(trial_template, "Prac_Trivia") ~ "Prac_Trivia",
+      str_starts(block_name, "Trivia_List") ~ "Error_Detection",
       block_name == "Questionnaire" ~ "Questionnaire", 
-      trial_template == "Transcription_Instr" ~ "Transcription_Instr",
-      trial_template == "adjust_volume_transcription" ~ "Volume_Adjust_Transcription",
+      # trial_template == "Transcription_Instr" ~ "Transcription_Instr",
+      # trial_template == "adjust_volume_transcription" ~ "Volume_Adjust_Transcription",
       block_name == "Transcription" ~ "Transcription",
       TRUE ~ block_name 
     ),
@@ -65,7 +163,7 @@ d_processed <- data_clean %>%
       item_base %in% att_check_good_items ~ "att_check_good",
       item_base %in% att_check_err_items ~ "att_check_err",
       str_starts(item_base, "fill_") ~ "filler_other",
-      TRUE ~ "other_non_trivia"
+      TRUE ~ "other_non_err_detection"
     ),
     cond_letter = str_extract(stimuli_presented, "(?<=_)[ABCD](?=_)"),
     Condition = case_when(
@@ -80,8 +178,7 @@ d_processed <- data_clean %>%
     response_rt_num = as.numeric(response_rt)
   )
   
-  # --- 4. Join with Stimulus Design File ---
-  print(paste("--- Loading stimulus info from:", stimulus_filepath, "---"))
+  # join with stimulus design file 
   stim_design <- read_csv(stimulus_filepath)
   
   stim_info <- stim_design %>%
@@ -98,7 +195,6 @@ d_processed <- data_clean %>%
   d_processed <- d_processed %>%
     left_join(stim_info, by = c("item_base" = "ID"))
   
-  print("--- Glimpse of data with new error type columns ---")
   print(
     d_processed %>%
       select(participant_id, item_base, Condition, nonphon_err_type, PhonErr_Details) %>%
@@ -106,18 +202,17 @@ d_processed <- data_clean %>%
       head()
   )
   
-  # --- 5. Participant and Trial Summaries ---
-  print("--- Participants per Trivia List ---")
+  # tally participants per trivia list
   participants_per_list <- d_processed %>%
-    filter(Block == "Trivia_List") %>%
+    filter(Block == "Error_Detection") %>%
     distinct(participant_id, block_name) %>%
     group_by(block_name) %>%
     summarise(n_participants = n(), .groups = 'drop')
   print(participants_per_list)
   
-  print("--- Trial Summary per Trivia List ---")
+  # tally trials per trivia list
   unique_trial_tally <- d_processed %>%
-    filter(Block == "Trivia_List") %>%
+    filter(Block == "Error_Detection") %>%
     filter(item_type != "other_non_trivia") %>%
     distinct(block_name, participant_id, item_base, item_type, Condition) %>%
     group_by(block_name, item_type, Condition) %>%
@@ -139,7 +234,7 @@ d_processed <- data_clean %>%
     arrange(block_name, item_type, Condition)
   print(list_summary, n = Inf)
   
-  print("--- Trial Summary for Transcription Block ---")
+  # tally trials for transcription
   participants_transcription <- d_processed %>%
     filter(Block == "Transcription") %>%
     distinct(participant_id, block_name) %>%
@@ -170,88 +265,86 @@ d_processed <- data_clean %>%
     arrange(block_name, trial_template)
   print(transcription_summary, n = Inf)
   
-  # --- 6. Time Spent ---
-  print("--- Analyzing time spent... ---")
+
+ 
+ # uncomment this chunk if interested in participation time  
+ # total experiment duration
+  # time_summary <- d_processed %>%
+  #   distinct(participant_id, participation_duration) %>%
+  #   mutate(duration_min = participation_duration / 60) 
+  # print("--- Total Experiment Duration (minutes) ---")
+  # print(summary(time_summary$duration_min))
+  # 
+  # p_total_dur <- ggplot(time_summary, aes(x = duration_min)) +
+  #   geom_histogram(binwidth = 5, fill = "steelblue", color = "black") +
+  #   labs(
+  #     title = "Total Experiment Duration per Participant",
+  #     x = "Total Duration (minutes)",
+  #     y = "Number of Participants"
+  #   ) +
+  #   theme_bw()
+  # print(p_total_dur)
+  # 
+  # # time spent per block
+  # task_time_summary <- d_processed %>%
+  #   filter(!is.na(Block) & !is.na(trial_duration_num)) %>% 
+  #   group_by(participant_id, Block) %>%
+  #   summarise(
+  #     total_task_duration_ms = sum(trial_duration_num, na.rm = TRUE),
+  #     .groups = 'drop'
+  #   ) %>%
+  #   mutate(total_task_duration_min = total_task_duration_ms / 60000) 
+  # 
+  # # average time per task
+  # print(
+  #   task_time_summary %>%
+  #     group_by(Block) %>%
+  #     summarise(mean_duration_min = mean(total_task_duration_min))
+  # )
+  # 
+  # p_block_dur <- ggplot(task_time_summary, aes(x = Block, y = total_task_duration_min)) +
+  #   geom_boxplot(fill = "lightblue") +
+  #   labs(
+  #     title = "Total Time Spent per Task (Block)",
+  #     x = "Task (Block)",
+  #     y = "Total Duration (minutes)"
+  #   ) +
+  #   theme_bw() +
+  #   theme(axis.text.x = element_text(angle = 45, hjust = 1),
+  #         axis.text = element_text(size = 12))
+  # print(p_block_dur)
+  # 
+  # # average time per trial
+  # trial_time_data <- d_processed %>%
+  #   filter(Block %in% c("Prac_Trivia", "Error_Detection", "Transcription", "Questionnaire")) %>%
+  #   mutate(trial_duration_min = trial_duration_num / 60000)
+  # 
+  # print(
+  #   trial_time_data %>%
+  #     group_by(Block) %>%
+  #     summarise(
+  #       mean_trial_min = mean(trial_duration_min, na.rm = TRUE),
+  #       sd_trial_min = sd(trial_duration_min, na.rm = TRUE),
+  #       median_trial_min = median(trial_duration_min, na.rm = TRUE)
+  #     )
+  # )
+  # 
+  # p_trial_dur <- ggplot(trial_time_data, aes(x = Block, y = trial_duration_min)) +
+  #   geom_boxplot(fill = "lightgreen") +
+  #   scale_y_log10() + 
+  #   labs(
+  #     title = "Trial Duration by Task",
+  #     x = "Task (Block)",
+  #     y = "Trial Duration (minutes, log scale)" 
+  #   ) +
+  #   theme_bw() +
+  #   theme(axis.text.x = element_text(angle = 45, hjust = 1),
+  #         axis.text = element_text(size = 12))
+  # print(p_trial_dur)
   
-  # 6.1 Total Experiment Duration
-  time_summary <- d_processed %>%
-    distinct(participant_id, participation_duration) %>%
-    mutate(duration_min = participation_duration / 60) 
-  print("--- Total Experiment Duration (minutes) ---")
-  print(summary(time_summary$duration_min))
-  
-  p_total_dur <- ggplot(time_summary, aes(x = duration_min)) +
-    geom_histogram(binwidth = 5, fill = "steelblue", color = "black") +
-    labs(
-      title = "Total Experiment Duration per Participant",
-      x = "Total Duration (minutes)",
-      y = "Number of Participants"
-    ) +
-    theme_bw()
-  print(p_total_dur)
-  
-  # 6.2 Time Spent per Block
-  task_time_summary <- d_processed %>%
-    filter(!is.na(Block) & !is.na(trial_duration_num)) %>% 
-    group_by(participant_id, Block) %>%
-    summarise(
-      total_task_duration_ms = sum(trial_duration_num, na.rm = TRUE),
-      .groups = 'drop'
-    ) %>%
-    mutate(total_task_duration_min = total_task_duration_ms / 60000) 
-  
-  print("--- Average Time per Task (minutes) ---")
-  print(
-    task_time_summary %>%
-      group_by(Block) %>%
-      summarise(mean_duration_min = mean(total_task_duration_min))
-  )
-  
-  p_block_dur <- ggplot(task_time_summary, aes(x = Block, y = total_task_duration_min)) +
-    geom_boxplot(fill = "lightblue") +
-    labs(
-      title = "Total Time Spent per Task (Block)",
-      x = "Task (Block)",
-      y = "Total Duration (minutes)"
-    ) +
-    theme_bw() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          axis.text = element_text(size = 12))
-  print(p_block_dur)
-  
-  # 6.3 Time Spent per Trial
-  trial_time_data <- d_processed %>%
-    filter(Block %in% c("Prac_Trivia", "Trivia_List", "Transcription", "Questionnaire")) %>%
-    mutate(trial_duration_min = trial_duration_num / 60000)
-  
-  print("--- Summary of Trial Durations (minutes) ---")
-  print(
-    trial_time_data %>%
-      group_by(Block) %>%
-      summarise(
-        mean_trial_min = mean(trial_duration_min, na.rm = TRUE),
-        sd_trial_min = sd(trial_duration_min, na.rm = TRUE),
-        median_trial_min = median(trial_duration_min, na.rm = TRUE)
-      )
-  )
-  
-  p_trial_dur <- ggplot(trial_time_data, aes(x = Block, y = trial_duration_min)) +
-    geom_boxplot(fill = "lightgreen") +
-    scale_y_log10() + 
-    labs(
-      title = "Trial Duration by Task",
-      x = "Task (Block)",
-      y = "Trial Duration (minutes, log scale)" 
-    ) +
-    theme_bw() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1),
-          axis.text = element_text(size = 12))
-  print(p_trial_dur)
-  
-#   # --- 7. Time-Based Outlier Analysis ---
-#   print("--- Starting time-based outlier analysis... ---")
+#  #time-based outlier analysis
 #   
-#   # 7.1 In-Trial Outliers
+# #in-trial outliers
 #   p_trial_outlier_viz <- ggplot(trial_time_data, aes(x = Block, y = trial_duration_min)) +
 #     geom_boxplot(fill = "coral", outlier.shape = NA) + 
 #     geom_jitter(width = 0.2, alpha = 0.2, height = 0) +
@@ -271,7 +364,7 @@ d_processed <- data_clean %>%
 #     summarise(max_trial_duration_min = max(trial_duration_min, na.rm = TRUE)) %>%
 #     arrange(desc(max_trial_duration_min))
 #   
-#   print("--- Longest single trial per participant (Top 10) ---")
+#  longest single trial per participant
 #   print(head(participant_max_trial, 10))
 #   
 #   long_trial_participants <- participant_max_trial %>%
@@ -279,12 +372,12 @@ d_processed <- data_clean %>%
 #     pull(participant_id)
 #   print(paste("Found", length(long_trial_participants), "participants with at least one trial over", trial_outlier_min, "minutes."))
 #   
-#   # 7.2 Inter-Task Outliers
+#   # inter-task trial outliers
 #   transition_time_data <- d_processed %>%
 #     filter(!Block %in% c("Prac_Trivia", "Trivia_List", "Transcription", "Questionnaire")) %>%
 #     mutate(transition_duration_min = trial_duration_num / 60000) 
 #   
-#   print("--- Summary of Transition Durations (minutes) ---")
+#   # transition duration
 #   print(
 #     transition_time_data %>%
 #       group_by(Block) %>%
@@ -315,9 +408,8 @@ d_processed <- data_clean %>%
 #   
 #   
 #   
-#  ### 7.2b: Total Transition Time (Trivia -> Transcription)
+# #total transition time
 # 
-# print("--- Analyzing TOTAL Trivia -> Transcription Transition ---")
 # 
 # 
 # transition_screens <- d_processed %>%
@@ -334,7 +426,7 @@ d_processed <- data_clean %>%
 #   ungroup()
 # 
 # 
-# print("--- Summary of TOTAL Transition Durations from Trivia to Transcription (minutes) ---")
+# # summary of total transition time
 # print(
 #   total_transition_time %>%
 #     summarise(
@@ -369,7 +461,7 @@ d_processed <- data_clean %>%
 # 
 # print(p_total_transition_plot)
 #   
-#   # 7.3 Attention Check Trial Durations
+#  #attention check trial durations
 #   att_check_time_data <- d_processed %>%
 #     filter(item_type %in% c("att_check_good", "att_check_err")) %>%
 #     mutate(trial_duration_min = trial_duration_num / 60000) 
@@ -399,7 +491,7 @@ d_processed <- data_clean %>%
 #     pull(participant_id)
 #   print(paste("Found", length(att_check_time_outliers), "participants who spent over", att_outlier_min, "minutes on one attention check."))
 #   
-#   # 7.4 Final Participant Filtering
+#  #participant filtering
 #   participants_to_exclude <- unique(c(
 #     long_trial_participants, 
 #     long_transition_participants, 
@@ -415,8 +507,8 @@ d_processed <- data_clean %>%
 #   print(paste("Original participant count:", n_distinct(d_processed$participant_id)))
 #   print(paste("New participant count after filtering:", n_distinct(d_final_analysis$participant_id)))
   
-  # --- 8. Final Data for Analysis ---
-  print("--- Creating final formatted dataset... ---")
+  
+
   rows_to_exclude <- c(
     "Transcription_Instr",
     "volumeAdjusted|playTranscription|volumeAdjustPressC",
@@ -429,9 +521,12 @@ d_processed <- data_clean %>%
   
   d.final <- d_processed %>%
     filter(
-      str_starts(block_name, "Trivia_List") | 
-      block_name == "Transcription" | 
-      block_name == "Questionnaire"
+      # --- THIS IS THE FIX ---
+      # Filter on the 'Block' column you created
+      Block == "Error_Detection" | 
+      Block == "Transcription" | 
+      Block == "Questionnaire"
+      # --- END FIX ---
     ) %>%
     select(
       group_id, 
@@ -440,7 +535,7 @@ d_processed <- data_clean %>%
       stimuli_presented, 
       stimulus_files_presented, 
       trial_num, 
-      Block, 
+      Block,  # We select the 'Block' column
       item_base, 
       item_type, 
       Condition, 
@@ -449,7 +544,7 @@ d_processed <- data_clean %>%
       Answer
     ) %>%
     rename(
-      block = Block,
+      block = Block, # Then rename it
       condition = Condition,
       phon_err_details = PhonErr_Details,
       answer = Answer
@@ -468,15 +563,15 @@ d_processed <- data_clean %>%
     arrange(trial_num, .by_group = TRUE) %>% 
     mutate(
       trial_num_sequential = case_when(
-        str_starts(block, "Trivia_List") ~ dense_rank(item_base),
+        str_starts(block, "Error_Detection") ~ dense_rank(item_base),
         TRUE ~ row_number()
       )
     ) %>%
     ungroup() %>% 
     select(-trial_num)
   
-  # --- 9. Final Sanity Checks & Write Files ---
-  print("--- Running final sanity checks... ---")
+  # sanity checks
+
   participant_count_final <- n_distinct(d.final$participant_id)
   print(paste("--- Total unique participants in final data:", participant_count_final))
   
@@ -493,1192 +588,271 @@ d_processed <- data_clean %>%
   print("--- Participants per block in final data ---")
   print(block_counts)
   
-  # --- Write final data to CSV ---
-  print("--- Writing final files... ---")
+# create separate data files for analysis  
+d_err_detection <- d.final %>%
+  filter(str_detect(block, "Error_Detection"))
+
+d_questionnaire <- d.final %>%
+  filter(str_detect(block, "Questionnaire"))
+
+d_transcription <- d.final %>%
+  filter(str_detect(block, "Transcription"))
+
+processed_data <- list(
+    all_data = d.final,
+    err_detection_data = d_err_detection,
+    questionnaire_data = d_questionnaire,
+    transcription_data = d_transcription
+  )
   
- # Define the output directory path
-output_dir <- "./data/preprocessed/"
+  return(processed_data)
 
-# Define output filenames using the new path and the prefix
-file_all <- paste0(output_dir, output_prefix, "_all_data.csv")
-file_trivia <- paste0(output_dir, output_prefix, "_trivia_data.csv")
-file_q <- paste0(output_dir, output_prefix, "_questionnaire_data.csv")
-file_trans <- paste0(output_dir, output_prefix, "_transcription_data.csv")
-
-write_csv(d.final, file_all)
-
-d.final %>%
-  filter(str_detect(block, "Trivia_List")) %>%
-  write_csv(file_trivia)
-
-d.final %>%
-  filter(str_detect(block, "Questionnaire")) %>%
-  write_csv(file_q)
-
-d.final %>%
-  filter(str_detect(block, "Transcription")) %>%
-  write_csv(file_trans)
-
-print(paste("--- All files written successfully to:", output_dir, "---"))
-
-return(d.final)
 }
 
-
-
 ```
 
-
-```{r processing-test-run-data-4-subjects-fixed-order-but-first-second-attempts-bundle-works}
-# d_processed_test_run <- process_experiment_data(
-#   data_filepath = "./data/raw/main_102825_test_run_4_subj.csv",
-#   stimulus_filepath = "./Stimuli_design.csv",
-#   output_prefix = "test_run_4_subj_102825_fixed_order"
-# )
-
-
-# We can also change the outlier thresholds, e.g.:
-# d_processed_main <- process_experiment_data(
-#   data_filepath = "./results_MAIN_RUN.csv",
-#   stimulus_filepath = "./Stimuli_design.csv",
-#   output_prefix = "main_run_110525",
-#   trial_outlier_min = 3,
-#   trans_outlier_min = 5,
-#   att_outlier_min = 1
-# )
-```
-
-
+### 1. Main batch 1: 48 subj data with failed randomization
 ```{r processing-main-data-subjects-batch1-failed-randomization}
-d_processed_main_batch1_48subj <- process_experiment_data(
-  data_filepath = "./data/raw/main_110425_random_fail_48subj.csv",
-  stimulus_filepath = "./Stimuli_design.csv",
-  output_prefix = "main_110425_random_fail_48subj"
-)
-```
+
+d_main_batch1_48subj <- process_experiment_data(data_filepath = "../data/raw/main_110425_random_fail_48subj.csv",
+                                   stimulus_filepath = "../data/Stimuli_design.csv")
+
+df_all_main_batch1_48subj <- d_main_batch1_48subj$all_data
+df_err_main_batch1_48subj <- d_main_batch1_48subj$err_detection_data
+df_quest_main_batch1_48subj <- d_main_batch1_48subj$questionnaire_data
+df_transcrip_main_batch1_48subj <- d_main_batch1_48subj$transcription_data
 
 
-```{r processing-main-data-subjects-batch2-fixed-randomization}
-d_processed_main_batch2 <- process_experiment_data(
-  data_filepath = "./data/raw/main_110725_random_fixed_test_run_4subj.csv",
-  stimulus_filepath = "./Stimuli_design.csv",
-  output_prefix = "main_110725_random_fixed_test_run_4subj"
-)
-```
-
-
-```{r sanity-checks-main-batch2-fixed-randomization-test-run}
-
-# --------------------------------- #
-# 1. New Randomization Checks
-# --------------------------------- #
-
-print("\n\n==================================================================")
-print("=== PART 1: RUNNING NEW RANDOMIZATION SANITY CHECKS ===")
-print("==================================================================")
-
-
-d.check.random <- d_processed_main_batch2 %>%
-  filter(str_detect(block, "Trivia_List")) %>%
-  # Group by participant and stimulus
-  group_by(participant_id, item_base) %>%
-  # Arrange by the *actual* presentation order
-  arrange(trial_order_actual) %>%
-  mutate(true_attempt_num = (row_number() - 1) %/% 2 + 1) %>%
-  ungroup()
-
-# ---
-# CHECK 1: Verify Label Alignment 
-# ---
-# This checks if the 'Second_attempt' label in 'stimuli_presented'
-# EVER appears on a trial that is *actually* the first pass.
-# This count MUST be 0 if the randomization is fixed.
-print("--- CHECK 1: Verifying 'Second_attempt' label matches true trial order ---")
-
-mismatched_attempts <- d.check.random %>%
-  filter(
-    true_attempt_num == 1 &
-    str_detect(stimuli_presented, "Second_attempt")
-  )
-
-if (nrow(mismatched_attempts) == 0) {
-  print(">>> SUCCESS: Randomization fixed! 'Second_attempt' labels only appear in the true second pass.")
-  print(paste("    (Found 0 rows where 'Second_attempt' label was on a true first pass)"))
-} else {
-  print(paste(">>> ERROR: Found", nrow(mismatched_attempts), "rows where 'Second_attempt' label is on the TRUE first pass."))
-  print("    This means the randomization is still broken.")
-  print(head(mismatched_attempts))
-}
-cat("\n")
-
-
-# ---
-# CHECK 2: Verify Bundle Integrity (Sequential Trials) 
-# ---
-# This checks if all 4 rows (or 2) for a given stimulus
-# appeared sequentially, with no other stimuli in between.
-print("--- CHECK 2: Verifying stimulus bundles are sequential ---")
-
-bundle_check <- d.check.random %>%
-  group_by(participant_id, item_base) %>%
-  # Get the min and max actual trial number for each bundle
-  summarise(
-    min_trial = min(trial_order_actual),
-    max_trial = max(trial_order_actual),
-    n_unique_trials = n_distinct(trial_order_actual),
-    .groups = 'drop'
-  ) %>%
-  # The "span" of trial numbers should be (n_unique_trials - 1)
-  # e.g., 2 unique trial numbers (162, 163) -> span = 163-162 = 1. n_unique = 2. (2-1) = 1.
-  # e.g., 1 unique trial number (162) -> span = 162-162 = 0. n_unique = 1. (1-1) = 0.
-  mutate(span_actual = max_trial - min_trial,
-         span_expected = n_unique_trials - 1,
-         is_sequential = (span_actual == span_expected))
-
-broken_bundles <- bundle_check %>% filter(!is_sequential)
-
-if (nrow(broken_bundles) == 0) {
-  print(">>> SUCCESS: All trials for each stimulus are perfectly sequential (bundled).")
-  print("    This confirms that 1st and 2nd attempts always occurred together.")
-} else {
-  print(paste(">>> ERROR: Found", nrow(broken_bundles), "bundles that are NOT sequential."))
-  print("    This means a participant saw one attempt, then a different stimulus, then the second attempt.")
-  print(head(broken_bundles))
-}
-cat("\n")
-
-
-# ---
-# CHECK 3: Verify Randomization of Bundles (Visual Check)
-# ---
-# This checks if the *bundles themselves* are randomized
-# by printing the order of item_types for one participant.
-print("--- CHECK 3: Verifying randomization of bundle *types* ---")
-
-if (nrow(d.check.random) > 0) {
-  # Get the first participant's ID
-  sample_participant <- d.check.random$participant_id[1]
-  
-  trial_order_visual <- d.check.random %>%
-    filter(participant_id == sample_participant) %>%
-    # Get just the first row of each bundle (e.g., the choice response)
-    group_by(item_base) %>%
-    slice_head(n = 1) %>%
-    ungroup() %>%
-    arrange(trial_order_actual) %>%
-    select(trial_order_actual, item_base, item_type)
-  
-  print(paste("Visual check of trial order for participant:", sample_participant))
-  print(trial_order_visual, n = Inf)
-  print("--- (Review the 'item_type' column. It should appear mixed/randomized.) ---")
-  
-} else {
-  print("--- Could not perform visual check: No 'Trivia_List' data found. ---")
-}
-
-print("==================================================================")
-print("=== ALL SANITY CHECKS COMPLETE ===")
-print("==================================================================")
-```
-
-
-```{r processing-transcription-baseline-batch1-and-2-combined-and-test-run-4-subj}
-# To run this, ensure you have the transcription baseline data file combined using the 'transcription_scoring_YG.Rmd' script.
-# The raw combined csv file for batch 1 and 2 transcription data is "./data/raw/transcription_baseline_batch1and2.csv".
-d_processed_baseline_transcription <- process_experiment_data(
-  data_filepath = "./data/raw/transcription_baseline_batch1and2.csv",
-  stimulus_filepath = "./Stimuli_design.csv",
-  output_prefix = "transcription_baseline_batch1and2_24subj"
-)
-```
-
-
-```{r main-batch1-reformatting-filter-out-second-pass}
-# ---------------------------------
-# 1. Load the Data
-# ---------------------------------
-# Load the main data file
-d.batch1.original <- read_csv("./data/preprocessed/main_110425_random_fail_48subj_trivia_data.csv")
-
-# ---------------------------------
-# 2. Mark the True First Pass (Your Question 1)
-# ---------------------------------
-# We group by participant AND the unique stimulus ID (item_base)
-# Then, we arrange by the *actual* trial number to find the true first instance
-# Finally, we create a new column 'true_attempt_num' (1 = first, 2 = second)
-# Since each "attempt" has two rows (choice + text), we use integer
-# division `(row_number() - 1) %/% 2 + 1` to group the first
-# two rows (1,2) as attempt 1, and the next two rows (3,4) as attempt 2.
-
-d.marked <- d.batch1.original %>%
-  group_by(participant_id, item_base) %>%
-  arrange(trial_num_sequential) %>%
-  mutate(true_attempt_num = (row_number() - 1) %/% 2 + 1) %>%
-  ungroup()
-
-# --- Sanity Check ---
-# Let's look at a participant who had a "Second_attempt" trial
-# to see if our new column 'true_attempt_num' correctly identified
-# the *real* first and second passes.
-print("--- Sanity Check: Comparing 'stimuli_presented' to 'true_attempt_num' ---")
-
-# This will find rows where the 'stimuli_presented' column *contains* "Second_attempt"
-# and shows our new numbering. You'll likely see cases where
-# stimuli_presented == "Second_attempt|..." BUT true_attempt_num == 1
-check_data <- d.marked %>%
-  filter(grepl("Second_attempt", stimuli_presented)) %>%
-  select(participant_id, item_base, trial_num_sequential, stimuli_presented, true_attempt_num)
-
-print(head(check_data))
-cat("\n\n")
-
-# --- New Check: Isolate Target Trials ---
-# This check filters for trials where 'item_base' does NOT start with 'fill_'
-print("--- Sanity Check: Isolating Target Trials (non-fillers) ---")
-target_check_data <- d.marked %>%
-  filter(!grepl("fill_", item_base)) %>%
-  select(participant_id, item_base, trial_num_sequential, stimuli_presented, true_attempt_num)
-
-# Print the first few rows of this new check
-print(head(target_check_data))
-cat("\n\n")
-
-
-# ---------------------------------
-# 3. Filter for ONLY the First Pass (Your Question 2)
-# ---------------------------------
-# Now that we have the 'true_attempt_num' column,
-# we can simply filter for all the rows where it equals 1.
-# This will keep *both* rows (choice and text) for the true first attempt.
-
-d.first_pass_only <- d.marked %>%
-  filter(true_attempt_num == 1)
-
-print("--- Data filtered for first pass only ---")
-# This dataframe now has only one row per participant per stimulus,
-# and it is the *true* first time they encountered it.
-print(d.first_pass_only)
-
-
-# ---------------------------------
-# 4. Add Sorting Category 
-# ---------------------------------
-# Create a new column to define the sort order:
-# 1 = attention checks (item_type starts with "att_check_")
-# 2 = target trials (item_base does NOT contain "fill_")
-# 3 = other filler trials
-d.first_pass_with_sort_cat <- d.first_pass_only %>%
-  mutate(
-    sort_category = case_when(
-      startsWith(item_type, "att_check_") ~ 1,
-      !grepl("fill_", item_base)         ~ 2,
-      TRUE                              ~ 3
-    )
-  )
-
-# ---------------------------------
-# 5. Sort Data by New Order
-# ---------------------------------
-# Now, arrange the data first by participant, then by the new sort category,
-# and finally by the original trial number as a tie-breaker.
-d.first_pass_sorted <- d.first_pass_with_sort_cat %>%
-  arrange(participant_id, sort_category, trial_num_sequential)
-
-# ---------------------------------
-# 6. Add Participant Number 
-# ---------------------------------
-# Create a mapping of the long participant_id string to a simple integer
-participant_map <- d.first_pass_sorted %>%
-  distinct(participant_id) %>%
-  arrange(participant_id) %>% # Arrange to ensure consistent numbering
-  mutate(participant_num = row_number())
-
-# Join this new integer ID back to the main sorted dataframe
-d.final_with_num <- d.first_pass_sorted %>%
-  left_join(participant_map, by = "participant_id") %>%
-  # Move the new participant_num column to be near the front
-  select(participant_num, participant_id, everything())
-
-# ---------------------------------
-# 7. Save the New, Sorted Data (Updated Step)
-# ---------------------------------
-# This is the final file, now including 'participant_num'
-write_csv(d.final_with_num, "./data/preprocessed/main_data_first_pass_sorted_with_num_batch1_48subj.csv")
-
-# --- Optional: Print head of new data to check ---
-print("--- Head of final sorted data (d.final_with_num) ---")
-print(head(d.final_with_num))
-```
-
-
-```{r merge-initial-test-run-4-subj-with-main-batch2-randomization-fixed-4-subj}
-
-
-# ---------------------------------
-# 1. Load the two new data sets
-# ---------------------------------
-d_batch2_4subj_random_fixed <- read_csv("main_4_subj_11072025_batch2_fixed_randomization_trivia_data.csv")
-d_initial_test_run_4_subj_fixed_order <- read_csv("test_run_4_subj_102825_trivia_data.csv")
-
-# ---------------------------------
-# 2. Standardize Column Names
-# ---------------------------------
-# The files use different names for the trial number column.
-# We must rename 'trial_order_actual' in d_batch2 to 'trial_num_sequential'
-# so it matches the column in d_test_run.
-
-d_batch2_4subj_random_fixed_renamed <- d_batch2_4subj_random_fixed %>%
-  rename(trial_num_sequential = trial_order_actual)
-
-# ---------------------------------
-# 3. Append (Merge) the Data
-# ---------------------------------
-# bind_rows() is the safest way to stack data frames.
-# It matches columns by name and fills in any missing ones with NA.
-d_merged <- bind_rows(d_batch2_4subj_random_fixed_renamed, d_initial_test_run_4_subj_fixed_order)
-
-
-# ---------------------------------
-# 4. Add Sorting Category (Applied to ALL data)
-# ---------------------------------
-# 1 = attention checks
-# 2 = target trials (non-fillers)
-# 3 = other filler trials
-d.with_sort_cat <- d_merged %>%
-  mutate(
-    sort_category = case_when(
-      startsWith(item_type, "att_check_") ~ 1,
-      !grepl("fill_", item_base)         ~ 2,
-      TRUE                              ~ 3
-    )
-  )
-
-# ---------------------------------
-# 5. Sort Data by New Order 
-# ---------------------------------
-# Arrange by participant, then the new sort category, then original trial number.
-d.sorted <- d.with_sort_cat %>%
-  arrange(participant_id, sort_category, trial_num_sequential)
-
-# ---------------------------------
-# 6. Add Participant Number 
-# ---------------------------------
-# Create a mapping of the long participant_id string to a simple integer
-participant_map <- d.sorted %>%
-  distinct(participant_id) %>%
-  arrange(participant_id) %>% # Arrange to ensure consistent numbering
-  mutate(participant_num = row_number())
-
-# Join this new integer ID back to the main sorted dataframe
-d.final_with_num <- d.sorted %>%
-  left_join(participant_map, by = "participant_id") %>%
-  # Move the new participant_num column to be near the front
-  select(participant_num, participant_id, everything())
-
-# ---------------------------------
-# 7. Save the New, Sorted Data
-# ---------------------------------
-# This file contains ALL attempts (not just first pass),
-# sorted and with a participant number.
-write_csv(d.final_with_num, "merged_data_all_passes_sorted_with_num.csv")
-
-# --- Optional: Print head of new data to check ---
-print("--- Head of final merged and sorted data (d.final_with_num) ---")
-print(head(d.final_with_num))
-
-print(paste("Processing complete. Final file saved as 'merged_data_all_passes_sorted_with_num.csv' with", nrow(d.final_with_num), "rows."))
-
-
-```
-
-
-```{r accent-familiarity-error-detection-rate-analysis-sanity-checks}
-tryCatch({
-  # ---
-  # 1. Load Data
-  # ---
-  df_fb <- read_csv("./data/Exp1-DATA - FB.csv")
-  df_jb <- read_csv("./data/Exp1-DATA - JB.csv")
-  df_quest <- read_csv("./data/preprocessed/main_110425_random_fail_48subj_questionnaire_data.csv")
+###### reformatting main batch1 data to filter out second pass and sort ######
+# this only concerns the error detection data
+reformat_first_pass <- function(err_detection_df) {
   
 
-  # ---
-  # 2. Combine Experimental Data
-  # ---
-  df_exp_all <- bind_rows(df_fb, df_jb)
+  d.batch1.original <- err_detection_df
 
-  # ---
-  # 3. Mark Participants based on score (< 6/8 OR 4/7)
-  # ---
-  print("Applying new combined failure criterion (< 6/8 OR 4/7)...")
-  
-  df_exp_all <- df_exp_all %>%
+  # mark true first pass data 
+  d.marked <- d.batch1.original %>%
+    group_by(participant_id, item_base) %>%
+    arrange(trial_num_sequential) %>%
+    mutate(true_attempt_num = (row_number() - 1) %/% 2 + 1) %>%
+    ungroup()
+
+  # sanity checks
+  check_data <- d.marked %>%
+    filter(grepl("Second_attempt", stimuli_presented)) %>%
+    select(participant_id, item_base, trial_num_sequential, stimuli_presented, true_attempt_num)
+  print(head(check_data))
+  cat("\n\n")
+
+  target_check_data <- d.marked %>%
+    filter(!grepl("fill_", item_base)) %>%
+    select(participant_id, item_base, trial_num_sequential, stimuli_presented, true_attempt_num)
+  print(head(target_check_data))
+  cat("\n\n")
+
+  # filter for only the first pass data
+  d.first_pass_only <- d.marked %>%
+    filter(true_attempt_num == 1)
+
+  print(head(d.first_pass_only))
+
+  # add sorting numbers
+  d.first_pass_with_sort_cat <- d.first_pass_only %>%
     mutate(
-      
-      comments = as.character(comments),
-      
-     
-      attention_score_8 = as.numeric(
-        str_extract(comments, "(?<=\\()\\d+(?=\\/8)")
-      ),
-      
-     
-      attention_score_7 = as.numeric(
-        str_extract(comments, "(?<=\\()\\d+(?=\\/7)")
+      sort_category = case_when(
+        startsWith(item_type, "att_check_") ~ 1,
+        !grepl("fill_", item_base)         ~ 2,
+        TRUE                              ~ 3
       )
     )
 
+ # sort data by new order 
+  d.first_pass_sorted <- d.first_pass_with_sort_cat %>%
+    arrange(participant_id, sort_category, trial_num_sequential)
 
-  failed_participants_8 <- df_exp_all %>%
-    filter(attention_score_8 < 6) %>%
-    pull(participant_id) %>%
-    unique()
-    
-  failed_participants_7 <- df_exp_all %>%
-    filter(attention_score_7 == 4) %>%
-    pull(participant_id) %>%
-    unique()
-  
- 
-  failed_participants <- union(failed_participants_8, failed_participants_7)
+ # add participant number
+  participant_map <- d.first_pass_sorted %>%
+    distinct(participant_id) %>%
+    arrange(participant_id) %>% 
+    mutate(participant_num = row_number())
 
-  print(paste("Found", length(failed_participants), "total unique participants who failed."))
-  print("Failed participant IDs:")
-  print(failed_participants)
+  d.final_with_num <- d.first_pass_sorted %>%
+    left_join(participant_map, by = "participant_id") %>%
+    select(participant_num, participant_id, everything())
 
-
-  df_exp_all <- df_exp_all %>%
-    mutate(attention_check_passed = !participant_id %in% failed_participants)
-  
- 
-
-  # ---
-  # 4. Sanity Check
-  # ---
-  print("--- Sanity Check (New combined rule): Participants who Passed/Failed ---")
-  
-  status_counts <- df_exp_all %>%
-    distinct(participant_id, attention_check_passed) %>%
-    count(attention_check_passed)
-  
-  print(status_counts)
- 
-
-  # ---
-  # 5. Join with Questionnaire Data
-  # ---
-  print("Joining with questionnaire data...")
-  
-  df_final_joined <- df_exp_all %>%
-    left_join(df_quest, by = "participant_id")
-})
-
-
-df_clean <- df_full %>%
-  filter(attention_check_passed == TRUE)
-
-print(paste("Analyzing", n_distinct(df_clean$participant_id), "participants who passed attention checks."))
-```
-
-
-```{r accent-familiarity-error-detection-rate-analysis}
-df_clean_attchp <- df_final_joined %>%
-  filter(attention_check_passed == TRUE)
-
-print(paste("Analyzing", n_distinct(df_clean_attchp$participant_id), "participants who passed attention checks."))
-
-
-# ---
-# 2. Deduplicate and Clean Data
-# ---
-# First, deduplicate to get one row per trial
-df_deduplicated_trials <- df_clean_attchp %>%
-  distinct(participant_id, question, .keep_all = TRUE)
-
-print(paste("Deduplicated to", nrow(df_deduplicated_trials), "unique trials for analysis."))
-
-# Apply your cleaning and filtering logic
-df_analysis_data <- df_deduplicated_trials %>%
-  
-  # Recode 'nanas' to 'nans'
-  mutate(
-    err_reported_clean = case_when(
-      err_reported == "nanas" ~ "nans",
-      TRUE ~ err_reported
-    )
-  ) %>%
-  # Filter OUT 's' instances
-  filter(err_reported_clean != "s") %>%
-  
-  # Filter for target trials and conditions
-  filter(stim_type == "target") %>% 
-  filter(condition.x %in% c("correct", "phon_err", "non_phon_err", "both_err")) %>%
-  
-  # Ensure we only use the main categories
-  filter(err_reported_clean %in% c("y", "nans", "nun"))
-  
-# ---
-# 3. Frequency Table (Replicates your spreadsheet)
-# ---
-print("--- Analysis 1: Frequency Table (Stimulus Type vs. Participant Report) ---")
-freq_table <- df_analysis_data %>%
-  count(condition.x, err_reported_clean) %>%
-  pivot_wider(names_from = err_reported_clean, values_from = n, values_fill = 0)
-
-print(freq_table)
-
-# ---
-# 4. Data Preparation for Plot
-# ---
-# This is the same as your code
-prop_data <- df_analysis_data %>%
-  count(condition.x, err_reported_clean) %>%
-  group_by(condition.x) %>%
-  mutate(Proportion = n / sum(n)) %>%
-  ungroup() %>%
-  
-  # Create labels for the legend
-  mutate(
-    err_reported_label = case_when(
-      err_reported_clean == "nans" ~ "Question has no errors",
-      err_reported_clean == "nun"  ~ "Unsure",
-      err_reported_clean == "y"    ~ "Question needs correction"
-    ),
-    # Order the stimulus types logically
-    condition.x = factor(condition.x, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
+  first_pass_data <- list(
+    all_attempts_marked = d.marked,
+    first_pass_only_unsorted = d.first_pass_only,
+    first_pass_only_sorted = d.final_with_num
   )
-
-# ---
-# 5. Create Grouped Bar Chart (Not Stacked)
-# ---
-print("Generating grouped bar chart...")
-
-p_grouped_chart <- ggplot(prop_data, 
-                       # Use the clean label for the fill color
-                       aes(x = condition.x, y = Proportion, fill = err_reported_label)) +
   
-  # Use position_dodge() to place bars side-by-side
-  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black") +
-  
-  # Use a "beautiful" color palette (e.g., "Set2", "Pastel1", "Accent")
-  scale_fill_brewer(palette = "Set3") +
-  
-  scale_y_continuous(labels = scales::percent) +
-  labs(
-    x = "Condition",
-    y = "Proportion of Responses",
-    fill = "Participant Response"
-  ) +
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
-    axis.text.y = element_text(size = 14),
-    axis.title = element_text(size = 16, face = "bold"),
-    plot.title = element_text(face = "bold"),
-    legend.title = element_text(face = "bold", size = 14),
-    legend.text = element_text(size = 14),
-    legend.position = "top"
-  )
-
-print(p_grouped_chart)
-ggsave("stimulus_vs_response_GROUPED_proportions.png", width = 10, height = 7)
-
-print("--- Analysis replication complete. ---")
-
-# error bars added for the group chart
-
-# ---
-# 2. Prepare Data for Plot 1 (NEW METHOD)
-# ---
-print("Preparing data for Plot 1 (calculating per-participant error)...")
-
-# 1. Create labels *first*
-df_analysis_labeled <- df_analysis_data %>%
-  mutate(
-    err_reported_label = case_when(
-      err_reported_clean == "nans" ~ "Question has no errors",
-      err_reported_clean == "nun"  ~ "Unsure",
-      err_reported_clean == "y"    ~ "Question needs correction"
-    ),
-    condition.x = factor(condition.x, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
-  )
-
-# 2. Calculate proportions *per participant*
-# We use complete() to ensure all 0s are filled in
-participant_props <- df_analysis_labeled %>%
-  # Count responses for each participant/condition/response_type
-  count(participant_id, condition.x, err_reported_label) %>%
-  
-  # Explicitly fill in 0s for missing combinations
-  complete(participant_id, condition.x, err_reported_label, fill = list(n = 0)) %>%
-  
-  # Calculate per-participant proportions
-  group_by(participant_id, condition.x) %>%
-  mutate(
-    Total_Trials = sum(n),
-    Proportion = n / Total_Trials
-  ) %>%
-  ungroup()
-
-# 3. Calculate Group Mean, N, and Standard Error
-plot_summary_with_error_grouped <- participant_props %>%
-  group_by(condition.x, err_reported_label) %>%
-  summarise(
-    N = n(),
-    Mean_Proportion = mean(Proportion, na.rm = TRUE),
-    SD = sd(Proportion, na.rm = TRUE),
-    SE = SD / sqrt(N),
-    .groups = "drop"
-  ) %>%
-  # Calculate the min/max for the error bars
-  mutate(
-    ymin = Mean_Proportion - SE,
-    ymax = Mean_Proportion + SE
-  )
-
-print("--- Plot Summary for Grouped Chart (Head) ---")
-print(head(plot_summary_with_error_grouped))
+  return(first_pass_data)
+}
 
 
-# ---
-# 5. Create Grouped Bar Chart (Not Stacked)
-# ---
-print("Generating grouped bar chart with error bars...")
-
-p_grouped_chart <- ggplot(plot_summary_with_error_grouped, 
-                           aes(x = condition.x, 
-                               y = Mean_Proportion, # Use the new Mean
-                               fill = err_reported_label,
-                               # Add ymin/ymax
-                               ymin = ymin,
-                               ymax = ymax
-                           )) +
-  
-  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black") +
-  
-  # --- ADDED ERROR BARS ---
-  geom_errorbar(
-    position = position_dodge(width = 0.9), # Must match geom_bar's dodge
-    width = 0.25, # Width of the error bar "caps"
-    color = "black"
-  ) +
-  # --- END ADDED BARS ---
-  
-  scale_fill_brewer(palette = "Set3") + # Kept your 'Pastel1' palette
-  
-  scale_y_continuous(labels = scales::percent) +
-  labs(
-    x = "Condition",
-    y = "Proportion of Responses",
-    fill = "Participant Response"
-  ) +
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
-    axis.text.y = element_text(size = 14),
-    axis.title = element_text(size = 16, face = "bold"),
-    plot.title = element_text(face = "bold"),
-    legend.title = element_text(face = "bold", size = 14),
-    legend.text = element_text(size = 14),
-    legend.position = "top"
-  )
-
-print(p_grouped_chart)
-
-# second plot
-library(janitor)
-print("--- Analysis 2: Crosstab of Reported Error Type vs. Condition ---")
-print("Filtered for trials where participants reported 'y' (needs correction)")
-
-# These are the specific error types you want as columns
-err_types_to_analyze <- c("both", "np", "p")
-
-# First, create the main crosstab for *only* the specific error types
-main_crosstab <- df_analysis_data %>%
-  filter(err_reported_clean == "y") %>%
-  filter(err_type_response %in% c("both", "np", "p")) %>%
-  count(condition.x, err_type_response) %>%
-  pivot_wider(names_from = err_type_response, values_from = n) # No 'values_fill = 0'
-
-# Second, calculate the "Grand Total" column (all "y" responses)
-totals_y <- df_analysis_data %>%
-  filter(err_reported_clean == "y") %>%
-  count(condition.x, name = "Grand Total")
-
-# Third, join them together
-final_table <- totals_y %>%
-  left_join(main_crosstab, by = "condition.x") %>%
-  
-  # Re-order rows and columns to match your spreadsheet
-  mutate(condition.x = factor(condition.x, levels = c("both_err", "correct", "non_phon_err", "phon_err"))) %>%
-  arrange(condition.x) %>%
-  select(condition.x, both, np, p, `Grand Total`)
-
-# Finally, add the "Grand Total" row, which sums all numeric columns
-final_table_with_totals <- final_table %>%
-  adorn_totals(where = "row", name = "Grand Total")
-
-# Print the final, correct table
-print(final_table_with_totals)
-
-
-
-#### Plotting
-plot_data_summary <- tibble(
-  # This is the x-axis
-  Stimulus_Condition = factor(c(
-    "phon_err", 
-    "non_phon_err", 
-    "both_err", 
-    "both_err"
-  ), levels = c("phon_err", "non_phon_err", "both_err")),
-  
-  # This is the fill color
-  Error_Type_Detected = factor(c(
-    "phonological error", 
-    "nonphonological error", 
-    "phonological error", 
-    "nonphonological error"
-  )),
-  
-  # This is the y-axis
-  Proportion = c(
-    0.221198157, 
-    0.309178744, 
-    0.176190476, 
-    0.242857143
-  )
+first_pass_list <- reformat_first_pass(
+    err_detection_df = d_main_batch1_48subj$err_detection_data
 )
 
-print("--- Data for Plot ---")
-print(plot_data_summary)
+# this generates the main batch 1 48 subj data that ONLY include the first pass for error detection
+df_err_main_batch1_48subj_first_pass <- first_pass_list$first_pass_only_sorted
 
-# ---
-# 2. Create the Grouped Bar Chart
-# ---
-print("Generating grouped bar chart...")
+# for other task data, we can still use those generated from the data preprocessing function at the very beginning.
 
-p_hit_rate_chart <- ggplot(plot_data_summary, 
-                           aes(x = Stimulus_Condition, y = Proportion, fill = Error_Type_Detected)) +
-  
-  # Use position_dodge() to place bars side-by-side
-  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black", linewidth = 0.2) +
-  
-  # Use a "beautiful" color palette
-  scale_fill_brewer(palette = "Set1") +
-  
-  # Format Y axis as percentage
-  scale_y_continuous(labels = scales::percent_format()) +
-  
-  # Add labels
-  labs(
-    x = "Condition",
-    y = "Proportion of Errors Detected",
-    fill = "Error Type Detected"
-  ) +
-  
-  # Apply theme
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
-    axis.text.y = element_text(size = 14),
-    axis.title = element_text(size = 16, face = "bold"),
-    plot.title = element_text(face = "bold"),
-    legend.title = element_text(face = "bold", size = 14),
-    legend.text = element_text(size = 14),
-    legend.position = "top"
-  )
+# write files for main-analysis
+# save in ../data/preprocessed/
 
-# Print the plot
-print(p_hit_rate_chart)
+output_dir <- "../data/preprocessed/main_batch1/"
+
+# create sub folder to store preprocessed data if not 
+if (!dir.exists(output_dir)) {
+  print(paste("--- Directory does not exist. Creating:", output_dir, "---"))
+  dir.create(output_dir, recursive = TRUE)
+} else {
+  print(paste("--- Directory already exists:", output_dir, "---"))
+}
+
+file_err_first_pass <- file.path(output_dir, "48subj_err_detection_first_pass.csv")
+file_all_data <- file.path(output_dir, "48subj_all_data.csv")
+file_err_all_attempts <- file.path(output_dir, "48subj_err_detection_all_attempts.csv")
+file_questionnaire <- file.path(output_dir, "48subj_questionnaire_data.csv")
+file_transcription <- file.path(output_dir, "48subj_transcription_data.csv")
+
+write_csv(df_err_main_batch1_48subj_first_pass, file_err_first_pass)
+write_csv(df_all_main_batch1_48subj, file_all_data)
+write_csv(df_err_main_batch1_48subj, file_err_all_attempts)
+write_csv(df_quest_main_batch1_48subj, file_questionnaire)
+write_csv(df_transcrip_main_batch1_48subj, file_transcription)
+
 ```
 
 
-```{r accent-familiarity-error-detection-rate-analysis-another-way-to-plot-data}
-# ---
-# 2. Calculate Stimuli Totals (The Denominators)
-# ---
-# We need the total number of stimuli for each condition (217, 207, 210)
-stimuli_totals <- df_analysis_data %>%
-  # Note: We do NOT filter for "y" here
-  count(condition.x) %>%
-  rename(Total_Stimuli = n)
 
-print("--- Total Stimuli per Condition (Denominators) ---")
-print(stimuli_totals)
+### 2. Main batch 1: 4 test run subj data with fixed order (not full randomization, but first and second attempts are bundled together)
+```{r processing-main-data-subjects-batch1-fixed-order}
 
-# ---
-# 3. Calculate Detections (The Numerators)
-# ---
-# Now we filter for "y" responses and define "detection"
-detections <- df_analysis_data %>%
-  filter(err_reported_clean == "y") %>%
-  
-  # Create new columns to define a "hit"
-  mutate(
-    # A "Phonological Error" is detected if they say "p" OR "both"
-    Phon_Detected = err_type_response %in% c("p", "both"),
-    
-    # A "Non-Phonological Error" is detected if they say "np" OR "both"
-    NonPhon_Detected = err_type_response %in% c("np", "both")
-  ) %>%
-  
-  # Group by condition and sum the hits
-  group_by(condition.x) %>%
-  summarise(
-    Phon_Detections = sum(Phon_Detected),
-    NonPhon_Detections = sum(NonPhon_Detected)
-  )
+d_main_batch1_4subj <- process_experiment_data(data_filepath = "../data/raw/main_102825_test_run_4_subj.csv",
+                                   stimulus_filepath = "../data/Stimuli_design.csv")
 
-print("--- Errors Detected per Condition (Numerators) ---")
-print(detections)
-
-# ---
-# 4. Join and Calculate Proportions
-# ---
-# This joins the numerators and denominators
-plot_data_summary <- stimuli_totals %>%
-  left_join(detections, by = "condition.x") %>%
-  
-  # Calculate the proportions from your stats
-  mutate(
-    `phonological error` = Phon_Detections / Total_Stimuli,
-    `nonphonological error` = NonPhon_Detections / Total_Stimuli
-  ) %>%
-  
-  # Filter out the "correct" condition which isn't plotted
-  filter(condition.x != "correct") %>%
-  
-  # Select only the columns we need
-  select(Stimulus_Condition = condition.x, `phonological error`, `nonphonological error`) %>%
-  
-  # Pivot to the "long" format for ggplot
-  pivot_longer(
-    cols = c(`phonological error`, `nonphonological error`),
-    names_to = "Error_Type_Detected",
-    values_to = "Proportion"
-  ) %>%
-  
-  # Filter out the NAs (e.g., non-phon errors for phon_err stimuli)
-  filter(!is.na(Proportion))
+df_all_main_batch1_4subj <- d_main_batch1_4subj$all_data
+df_err_main_batch1_4subj <- d_main_batch1_4subj$err_detection_data
+df_quest_main_batch1_4subj <- d_main_batch1_4subj$questionnaire_data
+df_transcrip_main_batch1_4subj <- d_main_batch1_4subj$transcription_data
 
 
-#### Actual plotting:
-p_hit_rate_chart <- ggplot(plot_data_summary, 
-                           aes(x = Stimulus_Condition, y = Proportion, fill = Error_Type_Detected)) +
-  
-  # Use position_dodge() to place bars side-by-side
-  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black", linewidth = 0.2) +
-  
-  # Use a "beautiful" color palette
-  scale_fill_manual(values = c("phonological error" = "skyblue", 
-                               "nonphonological error" = "salmon")) +
-  
-  # Format Y axis as percentage
-  scale_y_continuous(labels = scales::percent_format()) +
-  
-  # Add labels
-  labs(
-    x = "Condition",
-    y = "Proportion of Errors Detected",
-    fill = "Error Type Detected"
-  ) +
-  
-  # Apply theme
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
-    axis.text.y = element_text(size = 14),
-    axis.title = element_text(size = 16, face = "bold"),
-    plot.title = element_text(face = "bold"),
-    legend.title = element_text(face = "bold", size = 14),
-    legend.text = element_text(size = 14),
-    legend.position = "top"
-  )
+output_dir <- "../data/preprocessed/main_batch1/"
 
-# Print the plot
-print(p_hit_rate_chart)
+# create sub folder to store preprocessed data if not 
+if (!dir.exists(output_dir)) {
+  print(paste("--- Directory does not exist. Creating:", output_dir, "---"))
+  dir.create(output_dir, recursive = TRUE)
+} else {
+  print(paste("--- Directory already exists:", output_dir, "---"))
+}
+
+file_all_data <- file.path(output_dir, "testrun_4subj_all_data.csv")
+file_err <- file.path(output_dir, "testrun_4subj_err_detection.csv")
+file_questionnaire <- file.path(output_dir, "testrun_4subj_questionnaire_data.csv")
+file_transcription <- file.path(output_dir, "testrun_4subj_transcription_data.csv")
 
 
-#######ERROR BARS
+write_csv(df_all_main_batch1_4subj, file_all_data)
+write_csv(df_err_main_batch1_4subj, file_err)
+write_csv(df_quest_main_batch1_4subj, file_questionnaire)
+write_csv(df_transcrip_main_batch1_4subj, file_transcription)
 
-# ---
-# 1. Load and Clean Base Data
-# ---
-print("Loading and cleaning base data...")
-# (Assuming df_analysis_base is already created from previous steps)
-# (If not, re-run the loading/cleaning code)
-
-
-# 2. Prepare Data for Plot 2 (Per-Participant)
-# ---
-print("Preparing data for Plot 2 (calculating per-participant error)...")
-
-# 1. Calculate Stimuli Totals per participant
-stimuli_totals_pp <- df_analysis_data %>%
-  group_by(participant_id, condition.x) %>%
-  count(name = "Total_Stimuli")
-
-# 2. Calculate Detections per participant
-detections_pp <- df_analysis_data %>%
-  filter(err_reported_clean == "y") %>%
-  mutate(
-    Phon_Detected = err_type_response %in% c("p", "both"),
-    NonPhon_Detected = err_type_response %in% c("np", "both")
-  ) %>%
-  group_by(participant_id, condition.x) %>%
-  summarise(
-    Phon_Detections = sum(Phon_Detected),
-    NonPhon_Detections = sum(NonPhon_Detected),
-    .groups = "drop"
-  )
-
-# 3. Join and Calculate Proportions per participant
-participant_hit_rates <- stimuli_totals_pp %>%
-  left_join(detections_pp, by = c("participant_id", "condition.x")) %>%
-  mutate(
-    Phon_Detections = ifelse(is.na(Phon_Detections), 0, Phon_Detections),
-    NonPhon_Detections = ifelse(is.na(NonPhon_Detections), 0, NonPhon_Detections)
-  ) %>%
-  mutate(
-    `phonological error` = Phon_Detections / Total_Stimuli,
-    `nonphonological error` = NonPhon_Detections / Total_Stimuli
-  ) %>%
-  filter(condition.x != "correct") %>%
-  select(participant_id, Stimulus_Condition = condition.x, `phonological error`, `nonphonological error`) %>%
-  pivot_longer(
-    cols = c(`phonological error`, `nonphonological error`),
-    names_to = "Error_Type_Detected",
-    values_to = "Proportion"
-  )
-
-# 4. Calculate Group Mean, SE, and **NEW "HITS ONLY" FILTER**
-plot_summary_with_error <- participant_hit_rates %>%
-
-  # --- THIS IS THE NEW FILTER ---
-  # Filter to only show "hits" and remove "false alarms"
-  filter(
-    (Stimulus_Condition == "phon_err" & Error_Type_Detected == "phonological error") |
-    (Stimulus_Condition == "non_phon_err" & Error_Type_Detected == "nonphonological error") |
-    (Stimulus_Condition == "both_err") # Keep both bars for the 'both_err' condition
-  ) %>%
-  # --- END NEW FILTER ---
-
-  group_by(Stimulus_Condition, Error_Type_Detected) %>%
-  summarise(
-    N = n(),
-    Mean_Proportion = mean(Proportion, na.rm = TRUE),
-    SD = sd(Proportion, na.rm = TRUE),
-    SE = SD / sqrt(N),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    ymin = Mean_Proportion - SE,
-    ymax = Mean_Proportion + SE
-  ) %>%
-  mutate(Stimulus_Condition = factor(Stimulus_Condition, 
-                                     levels = c("phon_err", "non_phon_err", "both_err")))
-
-print("--- Plot Summary with Error Bars (HITS ONLY) ---")
-print(plot_summary_with_error)
-
-# ---
-# 5. Create Plot 2 (Hit Rate) - "Hits Only"
-# ---
-# The plotting code itself doesn't need to change.
-# It will now receive data that has already been filtered.
-p_hit_rate_chart <- ggplot(plot_summary_with_error, 
-                           aes(x = Stimulus_Condition, 
-                               y = Mean_Proportion,
-                               fill = Error_Type_Detected,
-                               ymin = ymin,
-                               ymax = ymax
-                           )) +
-  
-  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black", linewidth = 0.2) +
-  
-  geom_errorbar(
-    position = position_dodge(width = 0.9), 
-    width = 0.25,
-    color = "black"
-  ) +
-  
-  scale_fill_manual(values = c("phonological error" = "skyblue", 
-                               "nonphonological error" = "salmon")) +
-  
-  scale_y_continuous(labels = scales::percent_format()) +
-  labs(
-    x = "Condition",
-    y = "Proportion of Errors Detected",
-    fill = "Error Type Detected"
-  ) +
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
-    axis.text.y = element_text(size = 14),
-    axis.title = element_text(size = 16, face = "bold"),
-    plot.title = element_text(face = "bold", size = 16),
-    legend.title = element_text(face = "bold", size = 14),
-    legend.text = element_text(size = 14),
-    legend.position = "top"
-  )
-
-print(p_hit_rate_chart)
 ```
 
 
-```{r accent-familiarity-interacts-with-error-detection-rate-analysis}
-# Isolate the familiarity data from the full joined file
-df_familiarity <- df_final_joined %>%
-  filter(stimuli_presented == "exposure_spanish_accent") %>%
-  select(participant_id, response_value.y) %>%
-  distinct() %>%
-  rename(exposure_spanish_accent = response_value.y)
-
-# Define the order for your familiarity levels
-familiarity_levels <- c("Never", "Sometimes", "Half the time", "Often", "All the time")
-
-# Join familiarity data with our clean trial data
-df_analysis_with_familiarity <- df_analysis_data %>%
-  left_join(df_familiarity, by = "participant_id") %>%
-  # Convert to an ordered factor (like your example)
-  mutate(exposure_spanish_accent = factor(exposure_spanish_accent, 
-                                          levels = familiarity_levels)) %>%
-  # Remove any participants who didn't answer this question
-  filter(!is.na(exposure_spanish_accent))
-
-print(paste("Analyzing data for", n_distinct(df_analysis_with_familiarity$participant_id), "participants with familiarity data."))
-
-# ---
-# 3. Plot 1 (Grouped Chart) by Familiarity
-# ---
-print("Generating Plot 1 (Grouped) by Familiarity...")
-
-# 1. Calculate proportions, grouping by familiarity
-prop_data_familiarity <- df_analysis_with_familiarity %>%
-  count(exposure_spanish_accent, condition.x, err_reported_clean) %>%
-  group_by(exposure_spanish_accent, condition.x) %>%
-  mutate(Proportion = n / sum(n)) %>%
-  ungroup() %>%
-  
-  # Create labels
-  mutate(
-    err_reported_label = case_when(
-      err_reported_clean == "nans" ~ "Question has no errors",
-      err_reported_clean == "nun"  ~ "Unsure",
-      err_reported_clean == "y"    ~ "Question needs correction"
-    ),
-    condition.x = factor(condition.x, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
-  )
-
-# 2. Create the plot with facet_wrap()
-p_grouped_chart_familiarity <- ggplot(prop_data_familiarity, 
-                       aes(x = condition.x, y = Proportion, fill = err_reported_label)) +
-  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black") +
-  scale_fill_brewer(palette = "Pastel1") +
-  scale_y_continuous(labels = scales::percent) +
-  
-  # --- THIS IS THE NEW LINE ---
-  facet_wrap(~ exposure_spanish_accent) +
-  # --- END NEW LINE ---
-  
-  labs(
-    x = "Condition",
-    y = "Proportion of Responses",
-    fill = "Participant Response"
-  ) +
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
-    axis.text.y = element_text(size = 12),
-    axis.title = element_text(size = 14, face = "bold"),
-    plot.title = element_text(face = "bold", size = 16),
-    legend.title = element_text(face = "bold", size = 12),
-    legend.text = element_text(size = 12),
-    legend.position = "top",
-    strip.text = element_text(size = 12, face = "bold", color = "black") # Controls the facet labels
-  )
-
-print(p_grouped_chart_familiarity)
-ggsave("stimulus_vs_response_GROUPED_by_familiarity.png", width = 12, height = 9)
-
-# ---
-# 4. Plot 2 (Hit Rate) by Familiarity
-# ---
-print("Generating Plot 2 (Hit Rate) by Familiarity...")
-
-# 1. Calculate Stimuli Totals (Denominators) by familiarity
-stimuli_totals_fam <- df_analysis_with_familiarity %>%
-  group_by(exposure_spanish_accent, condition.x) %>%
-  count(name = "Total_Stimuli")
-
-# 2. Calculate Detections (Numerators) by familiarity
-detections_fam <- df_analysis_with_familiarity %>%
-  filter(err_reported_clean == "y") %>%
-  mutate(
-    Phon_Detected = err_type_response %in% c("p", "both"),
-    NonPhon_Detected = err_type_response %in% c("np", "both")
-  ) %>%
-  group_by(exposure_spanish_accent, condition.x) %>%
-  summarise(
-    Phon_Detections = sum(Phon_Detected),
-    NonPhon_Detections = sum(NonPhon_Detected),
-    .groups = "drop"
-  )
-
-# 3. Join and Calculate Proportions
-plot_data_summary_fam <- stimuli_totals_fam %>%
-  left_join(detections_fam, by = c("exposure_spanish_accent", "condition.x")) %>%
-  mutate(
-    `phonological error` = Phon_Detections / Total_Stimuli,
-    `nonphonological error` = NonPhon_Detections / Total_Stimuli
-  ) %>%
-  filter(condition.x != "correct") %>%
-  select(Stimulus_Condition = condition.x, exposure_spanish_accent, `phonological error`, `nonphonological error`) %>%
-  pivot_longer(
-    cols = c(`phonological error`, `nonphonological error`),
-    names_to = "Error_Type_Detected",
-    values_to = "Proportion"
-  ) %>%
-  filter(!is.na(Proportion)) %>% 
-# --- THIS IS THE NEW LINE ---
-  # Re-order the x-axis from left to right
-  mutate(Stimulus_Condition = factor(Stimulus_Condition, 
-                                     levels = c("phon_err", "non_phon_err", "both_err")))
-  # --- END NEW LINE ---
 
 
-# 4. Create the plot with facet_wrap()
-p_hit_rate_chart_familiarity <- ggplot(plot_data_summary_fam, 
-                           aes(x = Stimulus_Condition, y = Proportion, fill = Error_Type_Detected)) +
-  geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black", linewidth = 0.2) +
-  scale_fill_brewer(palette = "Set2") +
-  scale_y_continuous(labels = scales::percent_format()) +
-  
-  # --- THIS IS THE NEW LINE ---
-  facet_wrap(~ exposure_spanish_accent) +
-  # --- END NEW LINE ---
-  
-  labs(
-    x = "Condition",
-    y = "Proportion of Errors Detected",
-    fill = "Error Type Detected"
-  ) +
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(size = 14),
-    axis.text.y = element_text(size = 14),
-    plot.title = element_text(face = "bold", size = 16),
-    legend.title = element_text(face = "bold", size = 14),
-    legend.text = element_text(size = 14),
-    strip.text = element_text(size = 14, face = "bold", color = "black"), 
-    axis.title = element_text(size = 14, face = "bold"),
-    legend.position = "top"
-  )
 
-print(p_hit_rate_chart_familiarity)
-ggsave("hit_rate_by_stimulus_by_familiarity.png", width = 12, height = 9)
+### 3. Main batch 2: 4 subj data with fixed randomization (test run)
 
-print("--- Analysis by familiarity complete. ---")
+```{r processing-main-data-subjects-batch2-fixed-randomization}
+d_main_batch2_4subj <- process_experiment_data(data_filepath = "../data/raw/main_110725_random_fixed_test_run_4subj.csv",
+                                   stimulus_filepath = "../data/Stimuli_design.csv")
+
+df_all_main_batch2_4subj <- d_main_batch2_4subj$all_data
+df_err_main_batch2_4subj <- d_main_batch2_4subj$err_detection_data
+df_quest_main_batch2_4subj <- d_main_batch2_4subj$questionnaire_data
+df_transcrip_main_batch2_4subj <- d_main_batch2_4subj$transcription_data
+
+# write files for main-analysis
+# save in ../data/preprocessed/
+
+output_dir <- "../data/preprocessed/main_batch2/"
+
+# create sub folder to store preprocessed data if not 
+if (!dir.exists(output_dir)) {
+  print(paste("--- Directory does not exist. Creating:", output_dir, "---"))
+  dir.create(output_dir, recursive = TRUE)
+} else {
+  print(paste("--- Directory already exists:", output_dir, "---"))
+}
+
+file_all_data <- file.path(output_dir, "testrun_4subj_all_data.csv")
+file_err <- file.path(output_dir, "testrun_4subj_err_detection.csv")
+file_questionnaire <- file.path(output_dir, "testrun_4subj_questionnaire_data.csv")
+file_transcription <- file.path(output_dir, "testrun_4subj_transcription_data.csv")
+
+write_csv(df_all_main_batch2_4subj, file_all_data)
+write_csv(df_err_main_batch2_4subj, file_err)
+write_csv(df_quest_main_batch2_4subj, file_questionnaire)
+write_csv(df_transcrip_main_batch2_4subj, file_transcription)
 ```
+
+
+### 4. Transcription baseline data: batch 1 and 2 combined, 24 subj
+
+```{r processing-transcription-baseline-batch1-and-2-combined-and-test-run-4-subj}
+
+d_transcrip_baseline_batch1 <- process_experiment_data(data_filepath = "../data/raw/transcription_baseline_batch1_14subj.csv",
+                                   stimulus_filepath = "../data/Stimuli_design.csv")
+
+df_transcrip_transcrip_baseline_batch1 <- d_transcrip_baseline_batch1$transcription_data
+df_quest_transcrip_baseline_batch1 <- d_transcrip_baseline_batch1$questionnaire_data
+
+
+d_transcrip_baseline_batch2 <- process_experiment_data(data_filepath = "../data/raw/transcription_baseline_batch2_10subj.csv",
+                                   stimulus_filepath = "../data/Stimuli_design.csv")
+
+df_transcrip_transcrip_baseline_batch2 <- d_transcrip_baseline_batch2$transcription_data
+df_quest_transcrip_baseline_batch2 <- d_transcrip_baseline_batch2$questionnaire_data
+
+
+df_transcrip_baseline_all <- dplyr::bind_rows(df_transcrip_baseline_batch1, df_transcrip_baseline_batch2)
+df_transcrip_transcrip_baseline_all <- dplyr::bind_rows(df_transcrip_transcrip_baseline_batch1, df_transcrip_transcrip_baseline_batch2)
+df_quest_transcrip_baseline_all <- dplyr::bind_rows(df_quest_transcrip_baseline_batch1, df_quest_transcrip_baseline_batch2)
+
+
+# write files for main-analysis
+# save in ../data/preprocessed/
+
+output_dir <- "../data/preprocessed/transcrip_baseline/"
+
+# create sub folder to store preprocessed data if not 
+if (!dir.exists(output_dir)) {
+  print(paste("--- Directory does not exist. Creating:", output_dir, "---"))
+  dir.create(output_dir, recursive = TRUE)
+} else {
+  print(paste("--- Directory already exists:", output_dir, "---"))
+}
+
+file_all_data <- file.path(output_dir, "all_data.csv")
+file_questionnaire <- file.path(output_dir, "questionnaire_data.csv")
+file_transcription <- file.path(output_dir, "transcription_data.csv")
+
+write_csv(df_transcrip_baseline_all, file_all_data)
+write_csv(df_quest_transcrip_baseline_all, file_questionnaire)
+write_csv(df_transcrip_transcrip_baseline_all, file_transcription)
+```
+
+
+
+
+
+
+
+
 
