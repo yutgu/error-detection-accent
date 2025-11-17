@@ -1,0 +1,13 @@
+# 1. Ignore everything
+*
+
+# 2. But, un-ignore this .gitignore file itself
+!.gitignore
+
+# 3. Un-ignore the 'analysis' folder AND everything in it
+!analysis/
+!analysis/**
+
+# 4. Un-ignore the 'data' folder AND everything in it
+!data/
+!data/**

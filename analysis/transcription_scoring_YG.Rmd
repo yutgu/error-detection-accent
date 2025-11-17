@@ -1,0 +1,896 @@
+---
+title: "transcription_task_analysis"
+author: "YG & XX"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r setup-functions, echo=FALSE}
+# --------------------------------- #
+# 1. Load Libraries
+# --------------------------------- #
+library(plyr)
+library(dplyr)
+library(tidyverse)
+library(Hmisc)
+library(tidyr)
+library(lme4)
+library(lmerTest)
+library(purrr) 
+
+# --------------------------------- #
+# 2. Define Helper Functions & Constants
+# --------------------------------- #
+
+# Variables for cleaning special characters
+chars <- c("<", ">", '"', ",", ";", "|", "'")
+char_codes <- c("&lt&", "&gt&", "&quot&", "&comma&", "&semicol&", "&pipe&", "&apos&")
+
+# Multi-gsub function
+mgsub <- function(pattern, replacement, x, ...) {
+  if (length(pattern) != length(replacement)) {
+    stop("pattern and replacement do not have the same length.")
+  }
+  result <- x
+  for (i in 1:length(pattern)) {
+    result <- gsub(pattern[i], replacement[i], result, ...)
+  }
+  result
+}
+
+# Keyword scoring function
+num.keywords.correct <- function(transcription, keywords) {
+  keys <- gsub("[[:punct:]]", "", tolower(as.character(keywords)))
+  trans <- gsub("[[:punct:]]", "", tolower(as.character(transcription)))
+  keys.list <- unlist(strsplit(keys, " "))
+  trans.list <- unlist(strsplit(trans, " "))
+  return(sum(!is.na(pmatch(keys.list, trans.list))))
+}
+
+# Keyword checking function (for P6 and P7)
+check_keywords_correct <- function(transcription, keywords, trial_id, filename, participant_id) {
+  keys <- gsub("[[:punct:]]", "", tolower(as.character(keywords)))
+  trans <- gsub("[[:punct:]]", "", tolower(as.character(transcription)))
+  keys.list <- unlist(strsplit(keys, " "))
+  trans.list <- unlist(strsplit(trans, " "))
+  correct_matches <- keys.list %in% trans.list
+  return(data.frame(
+    trial_id = trial_id,
+    participant_id = participant_id,
+    Filename = filename,
+    keyword = keys.list,
+    is_correct = correct_matches
+  ))
+}
+
+
+# --------------------------------- #
+# 3. Define MAIN Processing Function
+# --------------------------------- #
+
+process_transcription_data <- function(data_filepath, keyword_filepath, data_type) {
+  
+  d <- read.csv(data_filepath)
+  key.df <- read.delim(keyword_filepath, header = TRUE, sep = ",")
+  key.df$Sentence <- as.character(key.df$Sentence)
+
+
+  
+  if (data_type == "baseline") {
+    # Filter for baseline file
+    d.trans <- subset(d, stimulus_files_presented != "" & response_type == "text-response")
+    
+    # Standardize columns
+    d.trans$Filename <- basename(as.character(d.trans$stimulus_files_presented))
+    d.trans$Transcription <- d.trans$response_value
+    d.trans$block <- d.trans$block_name # <-- Key standardization step
+    
+  } else if (data_type == "main" || data_type == "testrun") { 
+    # Filter for main/testrun file
+    d.trans <- subset(d, stimulus_files_presented != "" & block == "Transcription")
+    
+    # Standardize columns (block name is already correct)
+    d.trans$Filename <- basename(as.character(d.trans$stimulus_files_presented))
+    d.trans$Transcription <- d.trans$response_value
+    # 'block' column already exists and is named correctly
+    
+  } else {
+    stop("Invalid data_type specified. Use 'baseline', 'main', or 'testrun'.")
+  }
+  
+ 
+  cols_to_keep <- c("participant_id", "Filename", "Transcription", "block")
+ 
+  d.trans_subset <- d.trans[, names(d.trans) %in% cols_to_keep]
+
+  # --- 3. Merge ---
+  d.all.m <- merge(d.trans_subset, subset(key.df, select = -c(SentenceSet)),
+                   by.x = "Filename", by.y = "Sentence",
+                   sort = FALSE)
+
+  # --- 4. Clean and Score ---
+  d.all.m <- within(d.all.m, {
+    Transcription <- tolower(mgsub(char_codes, chars, Transcription))
+    NumKeywordsCorrect <- mapply(num.keywords.correct, Transcription, Keywords)
+    PropKeywordsCorrect <- NumKeywordsCorrect / NumKeywords
+  })
+  
+  print(paste("--- Scoring complete for:", basename(data_filepath), "---"))
+  print(summary(d.all.m$PropKeywordsCorrect))
+  
+  return(d.all.m)
+}
+
+
+# --------------------------------- #
+# 4. Define Sanity Check Function
+# --------------------------------- #
+perform_sanity_checks <- function(scored_data) {
+  
+  print("--- Running Sanity Checks ---")
+  
+  # 1. Tally N of unique subjects
+  unique_subject_count <- scored_data %>%
+    summarise(N_Unique_Subjects = n_distinct(participant_id))
+  
+  print("--- Sanity Check 1: Total Unique Subjects ---")
+  print(unique_subject_count)
+  cat("\n")
+  
+  # 2. Tally N of unique sentences per subject
+  sentences_per_subject <- scored_data %>%
+    group_by(participant_id) %>%
+    summarise(N_Unique_Sentences = n_distinct(Filename))
+  
+  print("--- Sanity Check 2: Unique Sentences Transcribed Per Subject ---")
+  print(as.data.frame(sentences_per_subject))
+  cat("\n")
+}
+
+
+# --------------------------------- #
+# 5. Define Plot Generation Function (P1-P7)
+# --------------------------------- #
+generate_analysis_plots <- function(scored_data) {
+  
+  print("--- Generating Analysis Plots P1-P7 ---")
+  
+  # Overall Summary Stats
+  summary_stats <- scored_data %>%
+    summarise(
+      Mean = mean(PropKeywordsCorrect),
+      Median = median(PropKeywordsCorrect),
+      SD = sd(PropKeywordsCorrect),
+      Min = min(PropKeywordsCorrect),
+      Max = max(PropKeywordsCorrect)
+    )
+  
+  # --- Plot 1: Overall Distribution ---
+  mean_score <- mean(scored_data$PropKeywordsCorrect)
+  p1 <- ggplot(scored_data, aes(x = PropKeywordsCorrect)) +
+    geom_histogram(binwidth = 0.1, fill = "steelblue", color = "white", alpha = 0.9) +
+    geom_vline(xintercept = mean_score, color = "darkorange", linetype = "dashed", size = 1.2) +
+    annotate("text", x = mean_score - 0.02, y = 14, label = paste("Mean =", round(mean_score, 2)),
+             color = "darkorange", hjust = "right", fontface = "bold", size = 4) +
+    labs(title = "Distribution of Overall Transcription Performance",
+         x = "Proportion Keywords Correct", y = "Number of Trials") +
+    theme_bw() +
+    theme(plot.title = element_text(size = 14, face = "bold"),
+          axis.title = element_text(size = 12), axis.text = element_text(size = 12))
+  
+  # --- Plot 2: Subject-Level ---
+
+plot_data <- scored_data %>%
+    group_by(participant_id, block) %>%
+    summarise(Mean_Prop_Correct = mean(PropKeywordsCorrect), .groups = "drop")
+
+# Create summary_data, grouping directly by block
+summary_data <- plot_data %>%
+    group_by(block) %>%
+    summarise(stats = list(smean.cl.boot(Mean_Prop_Correct)), .groups = "drop") %>%
+    tidyr::unnest_wider(stats)
+
+# Create p2, mapping the x-axis directly to block
+p2 <- ggplot(summary_data, aes(x = block, y = Mean)) +
+    geom_point(color = "darkred", size = 4) +
+    geom_errorbar(aes(ymin = Lower, ymax = Upper), color = "darkred", linewidth = 1, width = 0.2) +
+    labs(title = "Transcription Performance (Mean + 95% CI)",
+         x = "Block", y = "Proportion Keywords Correct") +
+    theme_bw() +
+    theme(axis.ticks.x = element_line(), plot.title = element_text(size = 16, face = "bold"),
+          axis.title = element_text(size = 12), axis.text = element_text(size = 12))
+
+  
+  # --- Plot 3: Item-Level (Distribution) ---
+  item_means <- scored_data %>%
+    group_by(Filename, NumKeywords) %>%
+    summarise(Mean_Prop_Correct = mean(PropKeywordsCorrect), .groups = "drop") %>%
+    ungroup() %>%
+    arrange(Mean_Prop_Correct)
+  
+  mean_item_difficulty <- mean(item_means$Mean_Prop_Correct)
+  
+  p3 <- ggplot(item_means, aes(x = Mean_Prop_Correct)) +
+    geom_histogram(binwidth = 0.1, fill = "mediumpurple", color = "white", alpha = 0.9) +
+    geom_vline(xintercept = mean_item_difficulty, color = "gold", linetype = "dashed", size = 1.2) +
+    annotate("text", x = mean_item_difficulty + 0.02, y = 6.5, 
+             label = paste("Mean =", round(mean_item_difficulty, 2)),
+             color = "gold", hjust = "left", fontface = "bold", size = 6) +
+    labs(title = "Distribution of Item Difficulty",
+         x = "Mean Proportion Correct (per Sentence)", y = "Number of Sentences") +
+    theme_bw() +
+    theme(plot.title = element_text(size = 14, face = "bold"),
+          axis.title = element_text(size = 12), axis.text = element_text(size = 12))
+  
+  # --- Plot 4: Item-Level (Specific) ---
+  item_means_clean <- item_means %>%
+    mutate(Filename_clean = gsub(".wav", "", Filename))
+  
+  p4 <- ggplot(item_means_clean, aes(x = Mean_Prop_Correct, y = reorder(Filename_clean, Mean_Prop_Correct))) +
+    geom_segment(aes(x = 0, xend = Mean_Prop_Correct,
+                     y = reorder(Filename_clean, Mean_Prop_Correct), 
+                     yend = reorder(Filename_clean, Mean_Prop_Correct)),
+                 color = "grey") +
+    geom_point(aes(color = Mean_Prop_Correct), size = 3) +
+    scale_color_gradient(low = "red", high = "green", name = "Mean Score") +
+    labs(title = "Difficulty of Individual Sentences",
+         x = "Mean Proportion Correct", y = "Sentence Filename") +
+    theme_bw() +
+    theme(plot.title = element_text(size = 16, face = "bold"),
+          axis.title = element_text(size = 12), axis.text = element_text(size = 12))
+  
+  # --- Plot 5: Confound Check ---
+  p5 <- ggplot(scored_data, aes(x = NumKeywords, y = PropKeywordsCorrect)) +
+    geom_point(alpha = 0.2) +
+    geom_jitter(width = 0.2, alpha = 0.3) +
+    geom_smooth(method = "lm", color = "red") + 
+    labs(title = "Performance by Number of Keywords",
+         x = "Number of Keywords in Sentence", y = "Proportion Keywords Correct") +
+    theme_bw() +
+    theme(plot.title = element_text(size = 14, face = "bold"),
+          axis.title = element_text(size = 12), axis.text = element_text(size = 12))
+  
+  # --- Plot 6: Keyword-in-Sentence ---
+  scored_data$trial_id <- 1:nrow(scored_data)
+  keyword_long_df <- pmap_dfr(
+    list(
+      scored_data$Transcription,
+      scored_data$Keywords,
+      scored_data$trial_id,
+      scored_data$Filename,
+      scored_data$participant_id
+    ),
+    check_keywords_correct 
+  )
+  
+  keyword_accuracy <- keyword_long_df %>%
+    group_by(Filename, keyword) %>%
+    summarise(Prop_Correct = mean(is_correct), .groups = "drop") %>%
+    ungroup()
+  
+  p6 <- ggplot(keyword_accuracy, aes(x = reorder(keyword, Prop_Correct), 
+                                   y = Prop_Correct, fill = Prop_Correct)) +
+    geom_col(color = "black") + 
+    facet_wrap(~ Filename, scales = "free_x") + 
+    scale_fill_gradient(low = "mediumpurple", high = "gold", name = "Accuracy") +
+    labs(title = "Accuracy for Individual Keywords in Each Sentence",
+         x = "Keyword (Sorted by Accuracy)",
+         y = "Proportion Correct (across all participants)") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 12),
+          plot.title = element_text(size = 16, face = "bold"),
+          strip.text = element_text(size = 12, face = "bold"))
+  
+  # --- Plot 7: Hardest Keywords ---
+  overall_keyword_accuracy <- keyword_long_df %>%
+    group_by(keyword) %>%
+    summarise(
+      N_Occurrences = n(),
+      Prop_Correct = mean(is_correct)
+    ) %>%
+    ungroup() %>%
+    arrange(Prop_Correct)
+  
+  p7 <- ggplot(head(overall_keyword_accuracy, 20), aes(x = reorder(keyword, Prop_Correct), y = Prop_Correct)) +
+    geom_col(fill = "mediumpurple", color = "white", alpha = 0.7) +
+    labs(title = "Top 20 Hardest Keywords (Across All Sentences)",
+         x = "Keyword", y = "Overall Proportion Correct") +
+    coord_flip() + 
+    theme_bw() +
+    theme(plot.title = element_text(size = 16, face = "bold"),
+          axis.title = element_text(size = 12), axis.text = element_text(size = 12))
+  
+  # --- Return all plots as a list ---
+  plot_list <- list(p1 = p1, p2 = p2, p3 = p3, p4 = p4, p5 = p5, p6 = p6, p7 = p7)
+  
+  return(plot_list)
+}
+
+
+# --------------------------------- #
+# 6. Define Accuracy over Time Function (P8-P9)
+# --------------------------------- #
+generate_time_analysis_plots <- function(scored_data) {
+  
+  print("--- Generating Accuracy over Time Plots P8-P9 ---")
+  
+  # Add trial_order column
+  d.with_trial_order <- scored_data %>%
+    group_by(participant_id) %>%
+    mutate(trial_order = row_number()) %>%
+    ungroup()
+  
+  # --- Plot 8: Average Accuracy Over Time ---
+  transcription_summary_over_time <- d.with_trial_order %>%
+    group_by(trial_order) %>%
+    summarise(
+      stats = list(smean.cl.boot(PropKeywordsCorrect)),
+      .groups = "drop"
+    ) %>%
+    tidyr::unnest_wider(stats)
+  
+  p8 <- ggplot(transcription_summary_over_time, aes(x = trial_order, y = Mean)) +
+    geom_point(color = "darkblue", size = 3) +
+    geom_line(color = "darkblue", linetype = "dashed", alpha = 0.5) +
+    geom_errorbar(aes(ymin = Lower, ymax = Upper), color = "darkblue", width = 0.2, linewidth = 0.8) +
+    geom_smooth(
+      data = d.with_trial_order, 
+      aes(x = trial_order, y = PropKeywordsCorrect), 
+      method = "lm", se = TRUE, color = "firebrick", fill = "firebrick",
+      alpha = 0.1, inherit.aes = FALSE
+    ) +
+    scale_x_continuous(breaks = seq(0, 20, by = 2)) + # **CORRECTED SYNTAX**
+    scale_y_continuous(limits = c(0, 1.0)) + 
+    labs(
+      title = "Transcription Accuracy Over Time (Group Average)",
+      x = "Trial Number (1 -> 20)",
+      y = "Mean Proportion Keywords Correct"
+    ) +
+    theme_bw() +
+    theme(plot.title = element_text(size = 14, face = "bold"),
+          axis.title = element_text(size = 12), axis.text = element_text(size = 12))
+  
+  # --- Plot 9: Individual Accuracy Over Time ---
+  p9 <- ggplot(d.with_trial_order, aes(x = trial_order, y = PropKeywordsCorrect)) +
+    geom_point(alpha = 0.4, color = "steelblue") +
+    geom_smooth(method = "lm", se = FALSE, color = "firebrick", linewidth = 1) +
+    facet_wrap(~ participant_id, ncol = 4) +
+    scale_x_continuous(breaks = c(1, 10, 20)) + 
+    scale_y_continuous(limits = c(0, 1.0)) + 
+    labs(
+      title = "Individual Participant Transcription Accuracy Over Time",
+      x = "Trial Number (1 -> 20)",
+      y = "Proportion Keywords Correct"
+    ) +
+    theme_bw() +
+    theme(
+      plot.title = element_text(size = 16, face = "bold"),
+      axis.title = element_text(size = 12),
+      strip.text = element_text(size = 10, face = "bold", color = "white"),
+      strip.background = element_rect(fill = "steelblue")
+    )
+  
+  # --- Return plots as a list ---
+  plot_list <- list(p8 = p8, p9 = p9)
+  return(plot_list)
+}
+```
+
+
+## 1. Batch 1 and 2 baseline official run
+```{r process-baseline-data, echo=FALSE, message=FALSE, warning=FALSE}
+
+
+# --- 0. COMBINE BASELINE FILES ---
+
+
+d.baseline.b1 <- read.csv("./data/raw/transcription_baseline_batch1_14subj.csv")
+d.baseline.b2 <- read.csv("./data/raw/transcription_baseline_batch2_10subj.csv")
+
+d.baseline.all <- dplyr::bind_rows(d.baseline.b1, d.baseline.b2)
+
+write.csv(d.baseline.all, "./data/raw/transcription_baseline_batch1and2.csv", row.names = FALSE)
+
+# --------------------------------- #
+# 1. PROCESS BASELINE DATA
+# --------------------------------- #
+
+d.baseline.batch1and2.scored <- process_transcription_data(
+  data_filepath = "./data/raw/transcription_baseline_batch1and2.csv",
+  keyword_filepath = "./transcription_only_baseline.txt",
+  data_type = "baseline"
+)
+
+# --------------------------------- #
+# 2. RUN SANITY CHECKS
+# --------------------------------- #
+perform_sanity_checks(d.baseline.batch1and2.scored)
+
+# --------------------------------- #
+# 3. GENERATE PLOT OBJECTS
+# --------------------------------- #
+
+all_plots_baseline <- generate_analysis_plots(d.baseline.batch1and2.scored)
+
+
+time_plots_baseline <- generate_time_analysis_plots(d.baseline.batch1and2.scored)
+```
+
+
+```{r p1-analysis-plots, echo=FALSE, fig.cap="Figure 1: Overall Distribution of Transcription Performance - Baseline"}
+
+print(all_plots_baseline$p1)
+```
+
+```{r p2-analysis-plots, echo=FALSE, fig.cap="Figure 2: Transcription Performance by Participant - Baseline"}
+print(all_plots_baseline$p2)
+```
+
+```{r p3-analysis-plots, echo=FALSE, fig.cap="Figure 3: Distribution of Item Difficulty - Baseline"}
+print(all_plots_baseline$p3)
+```
+
+
+```{r p4-analysis-plots, echo=FALSE, fig.cap="Figure 4: Difficulty of Individual Sentences - Baseline"}
+print(all_plots_baseline$p4)
+```
+
+
+```{r p5-analysis-plots, echo=FALSE, fig.cap="Figure 5: Performance by Number of Keywords - Baseline"}
+print(all_plots_baseline$p5)
+```
+
+
+```{r p6-analysis-plots, echo=FALSE, fig.cap="Figure 6: Accuracy for Individual Keywords in Each Sentence - Baseline"}
+print(all_plots_baseline$p6)
+```
+
+
+```{r p7-analysis-plots, echo=FALSE, fig.cap="Figure 7: Top 20 Hardest Keywords (Across All Sentences) - Baseline"}
+print(all_plots_baseline$p7)
+```
+
+
+```{r p8-analysis-plot, echo=FALSE, fig.cap="Figure 8: Transcription Performance by Trial Order - Baseline"}
+print(time_plots_baseline$p8)
+```
+
+```{r p9-analysis-plot, echo=FALSE, fig.cap="Figure 9: Individual Participant Performance by Trial Order - Baseline"}
+print(time_plots_baseline$p9)
+```
+
+
+## 2. Baseline test run 4 subj
+```{r process-baseline-data-test-run-4subj, echo=FALSE, message=FALSE, warning=FALSE}
+
+d.baseline.test.run.scored <- process_transcription_data(
+  data_filepath = "./data/raw/transcription_baseline_test_run_4subj_102825.csv",
+  keyword_filepath = "./transcription_only_baseline.txt",
+  data_type = "testrun"
+)
+
+
+perform_sanity_checks(d.baseline.test.run.scored)
+
+
+all_plots_baseline_testrun <- generate_analysis_plots(d.baseline.test.run.scored)
+time_plots_baseline_testrun <- generate_time_analysis_plots(d.baseline.test.run.scored)
+```
+
+
+
+```{r p1-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 1: Overall Distribution of Transcription Performance - Baseline - Test run"}
+
+print(all_plots_baseline_testrun$p1)
+```
+
+```{r p2-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 2: Transcription Performance by Participant - Baseline - Test run"}
+print(all_plots_baseline_testrun$p2)
+```
+
+```{r p3-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 3: Distribution of Item Difficulty - Baseline - Test run"}
+print(all_plots_baseline_testrun$p3)
+```
+
+
+```{r p4-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 4: Difficulty of Individual Sentences - Baseline - Test run"}
+print(all_plots_baseline_testrun$p4)
+```
+
+
+```{r p5-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 5: Performance by Number of Keywords - Baseline - Test run"}
+print(all_plots_baseline_testrun$p5)
+```
+
+
+```{r p6-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 6: Accuracy for Individual Keywords in Each Sentence - Baseline - Test run"}
+print(all_plots_baseline_testrun$p6)
+```
+
+
+```{r p7-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 7: Top 20 Hardest Keywords (Across All Sentences) - Baseline - Test run"}
+print(all_plots_baseline_testrun$p7)
+```
+
+
+```{r p8-analysis-plot-test-run, echo=FALSE, fig.cap="Figure 8: Transcription Performance by Trial Order - Baseline - Test run"}
+print(time_plots_baseline_testrun$p8)
+```
+
+```{r p9-analysis-plot-test-run, echo=FALSE, fig.cap="Figure 9: Individual Participant Performance by Trial Order - Baseline - Test run"}
+print(time_plots_baseline_testrun$p9)
+```
+
+
+## 3. Combine baseline test run and official run data
+```{r process-all-baseline-4-test-run-and-24-official-run-batch1and2, echo=FALSE, message=FALSE, warning=FALSE}
+d.baseline.all.scored <- rbind(d.baseline.test.run.scored, d.baseline.batch1and2.scored)
+write.csv(d.baseline.all.scored, "./data/preprocessed/transcription_baseline_all_28subj.csv", row.names = FALSE)
+
+perform_sanity_checks(d.baseline.all.scored)
+all_plots_baseline_all <- generate_analysis_plots(d.baseline.all.scored)
+time_plots_baseline_all <- generate_time_analysis_plots(d.baseline.all.scored)
+```
+
+
+```{r p1-analysis-plots-all-baseline, echo=FALSE, fig.cap="Figure 1: Overall Distribution of Transcription Performance - baseline - Test run + Official run"}
+
+print(all_plots_baseline_all$p1)
+```
+
+```{r p2-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 2: Transcription Performance by Participant - baseline - Test run + Official run"}
+print(all_plots_baseline_all$p2)
+```
+
+```{r p3-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 3: Distribution of Item Difficulty - baseline - Test run + Official run"}
+print(all_plots_baseline_all$p3)
+```
+
+
+```{r p4-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 4: Difficulty of Individual Sentences - baseline - Test run + Official run"}
+print(all_plots_baseline_all$p4)
+```
+
+
+```{r p5-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 5: Performance by Number of Keywords - baseline - Test run + Official run"}
+print(all_plots_baseline_all$p5)
+```
+
+
+```{r p6-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 6: Accuracy for Individual Keywords in Each Sentence - baseline - Test run + Official run"}
+print(all_plots_baseline_all$p6)
+```
+
+
+```{r p7-analysis-plots-test-run, echo=FALSE, fig.cap="Figure 7: Top 20 Hardest Keywords (Across All Sentences) - baseline - Test run + Official run"}
+print(all_plots_baseline_all$p7)
+```
+
+
+```{r p8-analysis-plot-test-run, echo=FALSE, fig.cap="Figure 8: Transcription Performance by Trial Order - baseline - Test run + Official run"}
+print(time_plots_baseline_all$p8)
+```
+
+
+```{r p9-analysis-plot-test-run, echo=FALSE, fig.cap="Figure 9: Individual Participant Performance by Trial Order - baseline - Test run + Official run"}
+print(time_plots_baseline_all$p9)
+```
+
+## 4. Main transcription task official run with 48 subjects - randomization failed batch
+```{r process-main-data-48-subj, echo=FALSE, message=FALSE, warning=FALSE}
+# Ensure you have already written transcription task only data before running the following chunk
+
+d.main.scored <- process_transcription_data(
+  data_filepath = "./data/preprocessed//main_110425_random_fail_48subj_transcription_data.csv",
+  keyword_filepath = "./transcription_only_baseline.txt",
+  data_type = "main"
+)
+
+
+perform_sanity_checks(d.main.scored)
+
+
+all_plots_main <- generate_analysis_plots(d.main.scored)
+time_plots_main <- generate_time_analysis_plots(d.main.scored)
+```
+
+
+
+```{r p1-analysis-plots-main, echo=FALSE, fig.cap="Figure 1: Overall Distribution of Transcription Performance - Main"}
+print(all_plots_main$p1)
+```
+
+```{r p2-analysis-plots-main, echo=FALSE, fig.cap="Figure 2: Transcription Performance by Participant - Main"}
+print(all_plots_main$p2)
+```
+
+```{r p3-analysis-plots-main, echo=FALSE, fig.cap="Figure 3: Distribution of Item Difficulty - Main"}
+print(all_plots_main$p3)
+```
+
+
+```{r p4-analysis-plots-main, echo=FALSE, fig.cap="Figure 4: Difficulty of Individual Sentences - Main"}
+print(all_plots_main$p4)
+```
+
+
+```{r p5-analysis-plots-main, echo=FALSE, fig.cap="Figure 5: Performance by Number of Keywords - Main"}
+print(all_plots_main$p5)
+```
+
+
+```{r p6-analysis-plots-main, echo=FALSE, fig.cap="Figure 6: Accuracy for Individual Keywords in Each Sentence - Main"}
+print(all_plots_main$p6)
+```
+
+
+```{r p7-analysis-plots-main, echo=FALSE, fig.cap="Figure 7: Top 20 Hardest Keywords (Across All Sentences) - Main"}
+print(all_plots_main$p7)
+```
+
+
+```{r p8-analysis-plot-main, echo=FALSE, fig.cap="Figure 8: Transcription Performance by Trial Order - Main"}
+print(time_plots_main$p8)
+```
+
+```{r p9-analysis-plot-main, echo=FALSE, fig.cap="Figure 9: Individual Participant Performance by Trial Order - Main"}
+print(time_plots_main$p9)
+```
+
+
+```{r compare-baseline-with-main}
+d.baseline.scored$group <- "baseline"
+d.main.scored$group <- "main"
+
+common_cols <- intersect(names(d.baseline.scored), names(d.main.scored))
+d.combined <- rbind(
+  d.baseline.scored[, common_cols], 
+  d.main.scored[, common_cols]
+)
+
+
+d.combined$group <- as.factor(d.combined$group)
+
+print("--- Combined Data Summary ---")
+print(
+  d.combined %>%
+    group_by(group) %>%
+    summarise(
+      N_Participants = n_distinct(participant_id),
+      Mean_Accuracy = mean(PropKeywordsCorrect),
+      SD_Accuracy = sd(PropKeywordsCorrect),
+      N_Trials = n()
+    )
+)
+
+
+summary_data_grouped <- d.combined %>%
+  group_by(group) %>%
+  summarise(
+    stats = list(smean.cl.boot(PropKeywordsCorrect)),
+    .groups = "drop"
+  ) %>%
+  tidyr::unnest_wider(stats)
+
+print("--- Summary Statistics (Mean + 95% Bootstrapped CI) ---")
+print(summary_data_grouped)
+
+
+p10_bootstrapped_ci <- ggplot(summary_data_grouped, aes(x = group, y = Mean, color = group)) +
+  
+  geom_jitter(
+    data = d.combined, 
+    aes(x = group, y = PropKeywordsCorrect),
+    width = 0.2, 
+    alpha = 0.15, 
+    height = 0,
+    inherit.aes = FALSE 
+  ) +
+  
+ 
+  geom_point(size = 4) +
+  
+ 
+  geom_errorbar(
+    aes(ymin = Lower, ymax = Upper),
+    width = 0.1,
+    linewidth = 1.2
+  ) +
+  
+  scale_y_continuous(limits = c(0, 1.0)) + 
+  scale_x_discrete(labels = c("baseline" = "baseline", 
+                              "main" = "main")) +
+  labs(
+    x = "Experimental Group",
+    y = "Proportion Keywords Correct"
+  ) +
+  theme_bw() +
+  theme(legend.position = "none",
+        plot.title = element_text(size = 14, face = "bold"),
+        axis.title = element_text(size = 14, face = "bold"),
+        axis.text.x = element_text(size = 14, face = "bold"))
+
+print(p10_bootstrapped_ci)
+
+
+
+# --- Statistical Test: Group Difference ---
+
+m_group_comparison <- lmer(PropKeywordsCorrect ~ group + (1 | participant_id), data = d.combined)
+
+print("--- Group Comparison Model Summary ---")
+print(summary(m_group_comparison))
+```
+
+
+
+```{r compare-adaptation-effects, echo=FALSE, message=FALSE, warning=FALSE}
+d.combined.time <- d.combined %>%
+  group_by(participant_id) %>%
+  mutate(trial_order = row_number()) %>%
+  ungroup()
+  
+
+time_summary_grouped <- d.combined.time %>%
+  group_by(group, trial_order) %>%
+  summarise(
+    stats = list(smean.cl.boot(PropKeywordsCorrect)),
+    .groups = "drop"
+  ) %>%
+  tidyr::unnest_wider(stats)
+  
+p11 <- ggplot(time_summary_grouped, aes(x = trial_order, y = Mean, color = group, fill = group)) +
+  geom_line(aes(linetype = group), linewidth = 1) +
+  geom_ribbon(aes(ymin = Lower, ymax = Upper), alpha = 0.2, linetype = 0) +
+
+  geom_smooth(
+    data = d.combined.time, 
+    aes(x = trial_order, y = PropKeywordsCorrect),
+    method = "lm", 
+    se = FALSE, 
+    linewidth = 1.5
+  ) +
+  scale_x_continuous(breaks = seq(0, 20, by = 2)) +
+  scale_y_continuous(limits = c(0, 1.0)) +
+  labs(
+    title = "Transcription Accuracy Over Time by Group",
+    x = "Trial Number (1 -> 20)",
+    y = "Mean Proportion Keywords Correct",
+    color = "Group",
+    fill = "Group",
+    linetype = "Group"
+  ) +
+  theme_bw() +
+  theme(plot.title = element_text(size = 14, face = "bold"),
+        axis.title = element_text(size = 12),
+        axis.text = element_text(size = 12))
+
+print(p11)
+
+m_adaptation_interaction <- lmer(
+  PropKeywordsCorrect ~ trial_order * group + (1 + trial_order | participant_id), 
+  data = d.combined.time
+)
+
+print("--- Adaptation Interaction Model Summary ---")
+print(summary(m_adaptation_interaction))
+```
+
+
+```{r accent-familiarity-transcription-accuracy, echo=FALSE, message=FALSE, warning=FALSE}
+
+d_main_q <- read_csv("./data/preprocessed/main_110425_random_fail_48subj_questionnaire_data.csv")
+d_baseline_q <- read_csv("./data/preprocessed/transcription_baseline_batch1and2_24subj_questionnaire_data.csv")
+
+
+d_main_q$group <- "main"
+d_baseline_q$group <- "baseline"
+
+d_long_combined <- bind_rows(d_main_q, d_baseline_q)
+
+
+question_keys <- c(
+  "exposure_spanish_accent",
+  "exposure_spanish"
+)
+
+d_questionnaire_wide <- d_long_combined %>%
+  filter(block == "Questionnaire") %>%
+  filter(stimuli_presented %in% question_keys) %>%
+  select(participant_id, group, stimuli_presented, response_value) %>%
+  pivot_wider(
+    names_from = stimuli_presented,
+    values_from = response_value
+  ) %>%
+  distinct(participant_id, .keep_all = TRUE)
+
+
+# write_csv(d_questionnaire_wide, "questionnaire_data_wide.csv")
+
+
+# get one mean transcription accuracy score per participant.
+print("--- Aggregating trial data to participant-level accuracy ---")
+
+d_accuracy_summary <- d.combined %>%
+  group_by(participant_id, group) %>%
+  summarise(
+    Mean_Accuracy = mean(PropKeywordsCorrect, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+print(head(d_accuracy_summary))
+
+
+print("--- Joining accuracy and questionnaire data ---")
+
+d_analysis <- d_accuracy_summary %>%
+  left_join(d_questionnaire_wide, by = c("participant_id", "group"))
+
+
+familiarity_levels <- c("Never", "Sometimes", "Half the time", "Often", "All the time")
+d_analysis <- d_analysis %>%
+  mutate(exposure_spanish_accent = factor(exposure_spanish_accent, 
+                                          levels = familiarity_levels))
+
+print("--- (a) Group-Level Analysis Summary ---")
+
+group_summary <- d_analysis %>%
+  filter(!is.na(exposure_spanish_accent)) %>% 
+  group_by(group, exposure_spanish_accent) %>%
+  summarise(
+    N_Participants = n(),
+    Mean_Accuracy = mean(Mean_Accuracy, na.rm = TRUE),
+    SD_Accuracy = sd(Mean_Accuracy, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  arrange(group, exposure_spanish_accent)
+
+print(group_summary)
+
+
+print("--- (b) Generating Individual-Level Analysis Plot ---")
+
+p_analysis <- ggplot(d_analysis, 
+                     aes(x = exposure_spanish_accent, y = Mean_Accuracy)) +
+  
+
+  geom_jitter(aes(color = group), width = 0.2, alpha = 0.7, size = 2) +
+  
+
+  geom_boxplot(aes(fill = group), alpha = 0.2, outlier.shape = NA) +
+  
+
+  facet_wrap(~ group) +
+  
+ 
+  scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
+  labs(
+    x = "Self-Reported Familiarity with Spanish-Accented English",
+    y = "Mean Keyword Accuracy"
+  ) +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
+    legend.position = "none",
+    strip.text = element_text(size = 14, face = "bold"),
+    axis.title = element_text(size = 14, face = "bold")
+  )
+
+# Print the plot to your R session
+print(p_analysis)
+
+# Save the plot
+ggsave("familiarity_vs_accuracy_plot.png", width = 10, height = 6)
+
+print("Analysis complete. Plot saved to 'familiarity_vs_accuracy_plot.png'")
+
+```
+
+
