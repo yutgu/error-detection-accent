@@ -1,0 +1,858 @@
+---
+title: "Data Processing"
+output: html_document
+date: "`r Sys.Date()`"
+---
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(echo = TRUE,
+                      fig.align = "center",
+                      fig.width = 12,
+                      fig.height = 6,
+                      dev = "png",
+                      message = FALSE, 
+                      warning = FALSE, 
+                      error=TRUE, 
+                      cache = FALSE,
+                      include = TRUE)
+
+# set a CRAN mirror
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+```
+
+
+```{r libraries, echo=FALSE, include=FALSE}
+# clean all cached data
+rm(list = ls()) 
+
+# for getting standard beta hat and CI
+library(insight)
+
+library(report)
+
+# load all relevant packages for data tidying, analysis and plotting (e.g., dplyr, lubridate -- to convert date and time data)
+library(tidyverse) 
+
+# provide a mechanism for chaining commands with a new forward-pipe operator, %>%
+library(magrittr)
+
+# dependency package for lme4 
+library(Matrix)
+
+# fit linear and generalized linear mixed-effects models
+library(lme4)
+
+# provide p-values in type I, II or III anova and summary tables for lmer model fits (cf. lme4) via Satterthwaite's degrees of freedom method
+library(lmerTest)
+
+# flexibly restructure and aggregate data
+library(reshape2)
+
+#library(logistf)
+
+# provide some easy-to-use functions for creating and customizing 'ggplot2'- based publication ready plots
+# but we could set this aside at this point 
+# library(ggpubr)
+
+# provide geoms for ggplot2 to repel overlapping text labels
+# for latest features, download and install directly from git 
+# devtools::install_github("slowkow/ggrepel")
+library(ggrepel)
+
+# provide a number of user-level functions to work with "grid" graphics, notably to arrange multiple grid-based plots on a page, and draw tables
+library(gridExtra)
+library(cowplot)
+# reorder factor levels (including moving specified levels to front, ordering by first appearance, reversing, and randomly shuffling); modifies factor levels (including collapsing rare levels into other, 'anonymising', and manually 'recoding')
+library(forcats)
+
+# create interactive web graphics from 'ggplot2' graphs 
+library(plotly)
+
+# create US map 
+library(usmap)
+
+# generate summary table for the mixed effects model 
+library(sjPlot)
+
+# transform the data with matching strings 
+library(stringr)
+
+# check for multicolinearity among predictors
+library(car)
+
+# detect changes in the models and avoids redundant rerunning of models 
+library(digest)
+
+# beeswarm plots
+library(ggbeeswarm)
+
+library(Hmisc)
+```
+
+
+```{r constants, echo=FALSE, include=FALSE}
+# aesthetic defaults
+
+dodge_amt <- 0.9
+dodge_amt2 <- 0.5
+
+# set the theme for graphs 
+theme_set(
+  theme_minimal(base_size = 20) +  
+  theme(legend.position = "right",  
+        plot.title = element_text(face = "bold"),
+        axis.title.x = element_text(face = "bold"),
+        axis.title.y = element_text(face = "bold"),
+        axis.text.x = element_text(size = 20),
+        axis.text.y = element_text(size = 20),
+        # panel.grid.major = element_blank(), 
+        # panel.grid.minor = element_blank(),  
+        axis.ticks = element_line(color = "black"),  
+        axis.line = element_blank(),
+        axis.line.x.bottom = element_line(color = "black"),  
+        axis.line.y.left = element_line(color = "black"),
+        strip.background = element_rect(fill = "white", color = "black")))
+  # panel.background = element_rect(fill = "transparent")))
+```
+
+
+
+
+```{r-function-preprocess-experiment-data}
+
+process_experiment_data <- function(data_filepath, 
+                                    stimulus_filepath
+                                    # trial_outlier_min = 5,
+                                    # trans_outlier_min = 10,
+                                    # att_outlier_min = 2
+                                    ) {
+  
+  # load data
+  data <- read_csv(data_filepath)
+  
+ # initial data inspection
+  print(colnames(data))
+  print(paste("N =", n_distinct(data$participant_id)))
+  print(unique(data$block_name))
+  print(unique(data$branch_eligiblenotEligible))
+  
+  data_clean <- data %>%
+    filter(branch_eligiblenotEligible == "eligible")
+  
+  print(paste("N of Eligible Participants =", n_distinct(data_clean$participant_id)))
+  
+ # data processing 
+  att_check_good_items <- c("fill_25", "fill_26", "fill_27", "fill_28")
+  att_check_err_items <- c("fill_29", "fill_30", "fill_31", "fill_32")
+  
+d_processed <- data_clean %>%
+  mutate(
+    Block = case_when(
+      # str_starts(trial_template, "Prac_Trivia") ~ "Prac_Trivia",
+      str_starts(block_name, "Trivia_List") ~ "Error_Detection",
+      block_name == "Questionnaire" ~ "Questionnaire", 
+      # trial_template == "Transcription_Instr" ~ "Transcription_Instr",
+      # trial_template == "adjust_volume_transcription" ~ "Volume_Adjust_Transcription",
+      block_name == "Transcription" ~ "Transcription",
+      TRUE ~ block_name 
+    ),
+    
+    item_base = str_extract(stimuli_presented, "targ_\\d+|fill_\\d+"),
+    item_type = case_when(
+      str_starts(item_base, "targ_") ~ "target",
+      item_base %in% att_check_good_items ~ "att_check_good",
+      item_base %in% att_check_err_items ~ "att_check_err",
+      str_starts(item_base, "fill_") ~ "filler_other",
+      TRUE ~ "other_non_err_detection"
+    ),
+    cond_letter = str_extract(stimuli_presented, "(?<=_)[ABCD](?=_)"),
+    Condition = case_when(
+      cond_letter == "A" ~ "correct",
+      cond_letter == "B" ~ "phon_err",
+      cond_letter == "C" ~ "non_phon_err",
+      cond_letter == "D" ~ "both_err", 
+      TRUE ~ NA_character_
+    ),
+    
+    trial_duration_num = as.numeric(trial_duration),
+    response_rt_num = as.numeric(response_rt)
+  )
+  
+  # join with stimulus design file 
+  stim_design <- read_csv(stimulus_filepath)
+  
+  stim_info <- stim_design %>%
+    mutate(
+      PhonErr_Details = str_c(phon_err_type, word_pairs, sep = "; ")
+    ) %>%
+    select(
+      ID, 
+      nonphon_err_type, 
+      PhonErr_Details,
+      Answer
+    )
+  
+  d_processed <- d_processed %>%
+    left_join(stim_info, by = c("item_base" = "ID"))
+  
+  print(
+    d_processed %>%
+      select(participant_id, item_base, Condition, nonphon_err_type, PhonErr_Details) %>%
+      filter(str_starts(item_base, "targ_")) %>%
+      head()
+  )
+  
+  # tally participants per trivia list
+  participants_per_list <- d_processed %>%
+    filter(Block == "Error_Detection") %>%
+    distinct(participant_id, block_name) %>%
+    group_by(block_name) %>%
+    summarise(n_participants = n(), .groups = 'drop')
+  print(participants_per_list)
+  
+  # tally trials per trivia list
+  unique_trial_tally <- d_processed %>%
+    filter(Block == "Error_Detection") %>%
+    filter(item_type != "other_non_trivia") %>%
+    distinct(block_name, participant_id, item_base, item_type, Condition) %>%
+    group_by(block_name, item_type, Condition) %>%
+    summarise(n_unique_trials_total = n(), .groups = 'drop')
+  
+  list_summary <- unique_trial_tally %>%
+    left_join(participants_per_list, by = "block_name") %>%
+    mutate(
+      trials_per_participant = n_unique_trials_total / n_participants
+    ) %>%
+    select(
+      block_name, 
+      item_type, 
+      Condition, 
+      trials_per_participant, 
+      n_unique_trials_total, 
+      n_participants
+    ) %>%
+    arrange(block_name, item_type, Condition)
+  print(list_summary, n = Inf)
+  
+  # tally trials for transcription
+  participants_transcription <- d_processed %>%
+    filter(Block == "Transcription") %>%
+    distinct(participant_id, block_name) %>%
+    group_by(block_name) %>%
+    summarise(n_participants = n(), .groups = 'drop')
+  
+  unique_trials_transcription <- d_processed %>%
+    filter(Block == "Transcription") %>%
+    filter(!is.na(trial_num)) %>% 
+    distinct(participant_id, block_name, trial_num, trial_template)
+  
+  transcription_total_tally <- unique_trials_transcription %>%
+    group_by(block_name, trial_template) %>%
+    summarise(n_unique_trials_total = n(), .groups = 'drop')
+  
+  transcription_summary <- transcription_total_tally %>%
+    left_join(participants_transcription, by = "block_name") %>%
+    mutate(
+      trials_per_participant = n_unique_trials_total / n_participants
+    ) %>%
+    select(
+      block_name,
+      trial_template,
+      trials_per_participant,
+      n_unique_trials_total,
+      n_participants
+    ) %>%
+    arrange(block_name, trial_template)
+  print(transcription_summary, n = Inf)
+  
+
+ 
+ # uncomment this chunk if interested in participation time  
+ # total experiment duration
+  # time_summary <- d_processed %>%
+  #   distinct(participant_id, participation_duration) %>%
+  #   mutate(duration_min = participation_duration / 60) 
+  # print("--- Total Experiment Duration (minutes) ---")
+  # print(summary(time_summary$duration_min))
+  # 
+  # p_total_dur <- ggplot(time_summary, aes(x = duration_min)) +
+  #   geom_histogram(binwidth = 5, fill = "steelblue", color = "black") +
+  #   labs(
+  #     title = "Total Experiment Duration per Participant",
+  #     x = "Total Duration (minutes)",
+  #     y = "Number of Participants"
+  #   ) +
+  #   theme_bw()
+  # print(p_total_dur)
+  # 
+  # # time spent per block
+  # task_time_summary <- d_processed %>%
+  #   filter(!is.na(Block) & !is.na(trial_duration_num)) %>% 
+  #   group_by(participant_id, Block) %>%
+  #   summarise(
+  #     total_task_duration_ms = sum(trial_duration_num, na.rm = TRUE),
+  #     .groups = 'drop'
+  #   ) %>%
+  #   mutate(total_task_duration_min = total_task_duration_ms / 60000) 
+  # 
+  # # average time per task
+  # print(
+  #   task_time_summary %>%
+  #     group_by(Block) %>%
+  #     summarise(mean_duration_min = mean(total_task_duration_min))
+  # )
+  # 
+  # p_block_dur <- ggplot(task_time_summary, aes(x = Block, y = total_task_duration_min)) +
+  #   geom_boxplot(fill = "lightblue") +
+  #   labs(
+  #     title = "Total Time Spent per Task (Block)",
+  #     x = "Task (Block)",
+  #     y = "Total Duration (minutes)"
+  #   ) +
+  #   theme_bw() +
+  #   theme(axis.text.x = element_text(angle = 45, hjust = 1),
+  #         axis.text = element_text(size = 12))
+  # print(p_block_dur)
+  # 
+  # # average time per trial
+  # trial_time_data <- d_processed %>%
+  #   filter(Block %in% c("Prac_Trivia", "Error_Detection", "Transcription", "Questionnaire")) %>%
+  #   mutate(trial_duration_min = trial_duration_num / 60000)
+  # 
+  # print(
+  #   trial_time_data %>%
+  #     group_by(Block) %>%
+  #     summarise(
+  #       mean_trial_min = mean(trial_duration_min, na.rm = TRUE),
+  #       sd_trial_min = sd(trial_duration_min, na.rm = TRUE),
+  #       median_trial_min = median(trial_duration_min, na.rm = TRUE)
+  #     )
+  # )
+  # 
+  # p_trial_dur <- ggplot(trial_time_data, aes(x = Block, y = trial_duration_min)) +
+  #   geom_boxplot(fill = "lightgreen") +
+  #   scale_y_log10() + 
+  #   labs(
+  #     title = "Trial Duration by Task",
+  #     x = "Task (Block)",
+  #     y = "Trial Duration (minutes, log scale)" 
+  #   ) +
+  #   theme_bw() +
+  #   theme(axis.text.x = element_text(angle = 45, hjust = 1),
+  #         axis.text = element_text(size = 12))
+  # print(p_trial_dur)
+  
+#  #time-based outlier analysis
+#   
+# #in-trial outliers
+#   p_trial_outlier_viz <- ggplot(trial_time_data, aes(x = Block, y = trial_duration_min)) +
+#     geom_boxplot(fill = "coral", outlier.shape = NA) + 
+#     geom_jitter(width = 0.2, alpha = 0.2, height = 0) +
+#     coord_cartesian(ylim = c(0, 2)) +
+#     labs(
+#       title = "Distribution of Trial Durations (Zoomed to 0-2 min)",
+#       x = "Task (Block)",
+#       y = "Single Trial Duration (minutes)"
+#     ) +
+#     theme_bw() +
+#     theme(axis.text.x = element_text(angle = 45, hjust = 1),
+#           axis.text = element_text(size = 12))
+#   print(p_trial_outlier_viz)
+#   
+#   participant_max_trial <- trial_time_data %>%
+#     group_by(participant_id) %>%
+#     summarise(max_trial_duration_min = max(trial_duration_min, na.rm = TRUE)) %>%
+#     arrange(desc(max_trial_duration_min))
+#   
+#  longest single trial per participant
+#   print(head(participant_max_trial, 10))
+#   
+#   long_trial_participants <- participant_max_trial %>%
+#     filter(max_trial_duration_min > trial_outlier_min) %>%
+#     pull(participant_id)
+#   print(paste("Found", length(long_trial_participants), "participants with at least one trial over", trial_outlier_min, "minutes."))
+#   
+#   # inter-task trial outliers
+#   transition_time_data <- d_processed %>%
+#     filter(!Block %in% c("Prac_Trivia", "Trivia_List", "Transcription", "Questionnaire")) %>%
+#     mutate(transition_duration_min = trial_duration_num / 60000) 
+#   
+#   # transition duration
+#   print(
+#     transition_time_data %>%
+#       group_by(Block) %>%
+#       summarise(
+#         mean_transition_min = mean(transition_duration_min, na.rm = TRUE),
+#         sd_transition_min = sd(transition_duration_min, na.rm = TRUE),
+#         median_transition_min = median(transition_duration_min, na.rm = TRUE)
+#       )
+#   )
+#   
+#   p_task_outlier_viz <- ggplot(transition_time_data, aes(x = Block, y = transition_duration_min)) +
+#     geom_boxplot(fill = "skyblue", outlier.color = "red") +
+#     theme_bw() +
+#     theme(axis.text.x = element_text(angle = 45, hjust = 1),
+#           axis.text = element_text(size = 12)) +
+#     labs(
+#       title = "Time Spent on Non-Task Blocks (Instructions, etc.)",
+#       x = "Block",
+#       y = "Duration (minutes)"
+#     )
+#   print(p_task_outlier_viz)
+#   
+#   long_transition_participants <- transition_time_data %>%
+#     filter(transition_duration_min > trans_outlier_min) %>%
+#     distinct(participant_id) %>%
+#     pull(participant_id)
+#   print(paste("Found", length(long_transition_participants), "participants who spent over", trans_outlier_min, "minutes on a non-major-task screen."))
+#   
+#   
+#   
+# #total transition time
+# 
+# 
+# 
+# transition_screens <- d_processed %>%
+#   filter(Block %in% c("Transcription_Instr", "Volume_Adjust_Transcription")) %>%
+#   mutate(duration_min = trial_duration_num / 60000)
+# 
+# 
+# total_transition_time <- transition_screens %>%
+#   group_by(participant_id) %>%
+#   summarise(
+#     total_duration_min = sum(duration_min, na.rm = TRUE),
+#     n_screens = n() 
+#   ) %>%
+#   ungroup()
+# 
+# 
+# # summary of total transition time
+# print(
+#   total_transition_time %>%
+#     summarise(
+#       mean_total_min = mean(total_duration_min, na.rm = TRUE),
+#       median_total_min = median(total_duration_min, na.rm = TRUE),
+#       sd_total_min = sd(total_duration_min, na.rm = TRUE),
+#       min_total_min = min(total_duration_min, na.rm = TRUE),
+#       max_total_min = max(total_duration_min, na.rm = TRUE)
+#     )
+# )
+# 
+# p_total_transition_plot <- ggplot(total_transition_time, aes(x = "Total Transition", y = total_duration_min)) +
+#   
+# 
+#   geom_boxplot(fill = "purple", outlier.shape = NA, alpha = 0.5, width = 0.3) +
+#   
+# 
+#   geom_jitter(width = 0.05, alpha = 0.7, color = "black") +
+#   
+#   theme_bw() +
+#   labs(
+#     title = "Total Transition Time: Trivia to Transcription",
+#     subtitle = "(Sum of 'Transcription_Instr' and 'Volume_Adjust' screens)",
+#     x = NULL, 
+#     y = "Total Duration (minutes)"
+#   ) +
+#   theme(
+#     plot.title = element_text(face = "bold"),
+#     axis.text.x = element_blank(), 
+#     axis.ticks.x = element_blank() 
+#   )
+# 
+# print(p_total_transition_plot)
+#   
+#  #attention check trial durations
+#   att_check_time_data <- d_processed %>%
+#     filter(item_type %in% c("att_check_good", "att_check_err")) %>%
+#     mutate(trial_duration_min = trial_duration_num / 60000) 
+#   
+#   p_att_check_viz <- ggplot(att_check_time_data, aes(x = item_type, y = trial_duration_min)) +
+#     geom_boxplot(fill = "gold", outlier.color = "red", outlier.size = 3) +
+#     theme_bw() +
+#     theme(axis.text.x = element_text(angle = 45, hjust = 1),
+#           axis.text = element_text(size = 12)) + 
+#     labs(
+#       title = "Time Spent on Attention Check Trials",
+#       x = "Attention Check Type",
+#       y = "Trial Duration (minutes)"
+#     )
+#   print(p_att_check_viz)
+#   
+#   participant_max_att_check <- att_check_time_data %>%
+#     group_by(participant_id) %>%
+#     summarise(max_att_check_min = max(trial_duration_min, na.rm = TRUE)) %>%
+#     arrange(desc(max_att_check_min))
+#   
+#   print("--- Longest single attention check trial per participant (Top 10) ---")
+#   print(head(participant_max_att_check, 10))
+#   
+#   att_check_time_outliers <- participant_max_att_check %>%
+#     filter(max_att_check_min > att_outlier_min) %>%
+#     pull(participant_id)
+#   print(paste("Found", length(att_check_time_outliers), "participants who spent over", att_outlier_min, "minutes on one attention check."))
+#   
+#  #participant filtering
+#   participants_to_exclude <- unique(c(
+#     long_trial_participants, 
+#     long_transition_participants, 
+#     att_check_time_outliers
+#   ))
+#   
+#   print(paste("Total unique participants to exclude (based on all time filters):", length(participants_to_exclude)))
+#   print(participants_to_exclude)
+#   
+#   d_final_analysis <- d_processed %>%
+#     filter(!participant_id %in% participants_to_exclude)
+#   
+#   print(paste("Original participant count:", n_distinct(d_processed$participant_id)))
+#   print(paste("New participant count after filtering:", n_distinct(d_final_analysis$participant_id)))
+  
+  
+
+  rows_to_exclude <- c(
+    "Transcription_Instr",
+    "volumeAdjusted|playTranscription|volumeAdjustPressC",
+    "End_Main_Experiment",
+    "questionnaire_part1_begin",
+    "questionnaire_part2_begin",
+    "confirmationCode",
+    "End_Study"
+  )
+  
+  d.final <- d_processed %>%
+    filter(
+      # --- THIS IS THE FIX ---
+      # Filter on the 'Block' column you created
+      Block == "Error_Detection" | 
+      Block == "Transcription" | 
+      Block == "Questionnaire"
+      # --- END FIX ---
+    ) %>%
+    select(
+      group_id, 
+      participant_id, 
+      response_value, 
+      stimuli_presented, 
+      stimulus_files_presented, 
+      trial_num, 
+      Block,  # We select the 'Block' column
+      item_base, 
+      item_type, 
+      Condition, 
+      nonphon_err_type, 
+      PhonErr_Details, 
+      Answer
+    ) %>%
+    rename(
+      block = Block, # Then rename it
+      condition = Condition,
+      phon_err_details = PhonErr_Details,
+      answer = Answer
+    ) %>%
+    filter(!stimuli_presented %in% rows_to_exclude) %>%
+    mutate(
+      second_attempt_used = case_when(
+        str_detect(stimuli_presented, "Second_attempt") & 
+          response_value != "I’m good — skip to the next question" ~ "Yes",
+        str_detect(stimuli_presented, "Second_attempt") & 
+          response_value == "I’m good — skip to the next question" ~ "No",
+        TRUE ~ "No"
+      )
+    ) %>% 
+    group_by(participant_id, block) %>%
+    arrange(trial_num, .by_group = TRUE) %>% 
+    mutate(
+      trial_num_sequential = case_when(
+        str_starts(block, "Error_Detection") ~ dense_rank(item_base),
+        TRUE ~ row_number()
+      )
+    ) %>%
+    ungroup() %>% 
+    select(-trial_num)
+  
+  # sanity checks
+
+  participant_count_final <- n_distinct(d.final$participant_id)
+  print(paste("--- Total unique participants in final data:", participant_count_final))
+  
+  trial_counts <- d.final %>%
+    group_by(participant_id, block) %>%
+    summarise(n_trials = n_distinct(trial_num_sequential), .groups = 'drop')
+  print("--- Summary of trial counts (per participant per block) ---")
+  print(trial_counts)
+  
+  block_counts <- d.final %>%
+    distinct(participant_id, block) %>%
+    group_by(block) %>%
+    summarise(n_participants = n(), .groups = 'drop')
+  print("--- Participants per block in final data ---")
+  print(block_counts)
+  
+# create separate data files for analysis  
+d_err_detection <- d.final %>%
+  filter(str_detect(block, "Error_Detection"))
+
+d_questionnaire <- d.final %>%
+  filter(str_detect(block, "Questionnaire"))
+
+d_transcription <- d.final %>%
+  filter(str_detect(block, "Transcription"))
+
+processed_data <- list(
+    all_data = d.final,
+    err_detection_data = d_err_detection,
+    questionnaire_data = d_questionnaire,
+    transcription_data = d_transcription
+  )
+  
+  return(processed_data)
+
+}
+
+```
+
+### 1. Main batch 1: 48 subj data with failed randomization
+```{r processing-main-data-subjects-batch1-failed-randomization}
+
+d_main_batch1_48subj <- process_experiment_data(data_filepath = "../data/raw/main_110425_random_fail_48subj.csv",
+                                   stimulus_filepath = "../data/Stimuli_design.csv")
+
+df_all_main_batch1_48subj <- d_main_batch1_48subj$all_data
+df_err_main_batch1_48subj <- d_main_batch1_48subj$err_detection_data
+df_quest_main_batch1_48subj <- d_main_batch1_48subj$questionnaire_data
+df_transcrip_main_batch1_48subj <- d_main_batch1_48subj$transcription_data
+
+
+###### reformatting main batch1 data to filter out second pass and sort ######
+# this only concerns the error detection data
+reformat_first_pass <- function(err_detection_df) {
+  
+
+  d.batch1.original <- err_detection_df
+
+  # mark true first pass data 
+  d.marked <- d.batch1.original %>%
+    group_by(participant_id, item_base) %>%
+    arrange(trial_num_sequential) %>%
+    mutate(true_attempt_num = (row_number() - 1) %/% 2 + 1) %>%
+    ungroup()
+
+  # sanity checks
+  check_data <- d.marked %>%
+    filter(grepl("Second_attempt", stimuli_presented)) %>%
+    select(participant_id, item_base, trial_num_sequential, stimuli_presented, true_attempt_num)
+  print(head(check_data))
+  cat("\n\n")
+
+  target_check_data <- d.marked %>%
+    filter(!grepl("fill_", item_base)) %>%
+    select(participant_id, item_base, trial_num_sequential, stimuli_presented, true_attempt_num)
+  print(head(target_check_data))
+  cat("\n\n")
+
+  # filter for only the first pass data
+  d.first_pass_only <- d.marked %>%
+    filter(true_attempt_num == 1)
+
+  print(head(d.first_pass_only))
+
+  # add sorting numbers
+  d.first_pass_with_sort_cat <- d.first_pass_only %>%
+    mutate(
+      sort_category = case_when(
+        startsWith(item_type, "att_check_") ~ 1,
+        !grepl("fill_", item_base)         ~ 2,
+        TRUE                              ~ 3
+      )
+    )
+
+ # sort data by new order 
+  d.first_pass_sorted <- d.first_pass_with_sort_cat %>%
+    arrange(participant_id, sort_category, trial_num_sequential)
+
+ # add participant number
+  participant_map <- d.first_pass_sorted %>%
+    distinct(participant_id) %>%
+    arrange(participant_id) %>% 
+    mutate(participant_num = row_number())
+
+  d.final_with_num <- d.first_pass_sorted %>%
+    left_join(participant_map, by = "participant_id") %>%
+    select(participant_num, participant_id, everything())
+
+  first_pass_data <- list(
+    all_attempts_marked = d.marked,
+    first_pass_only_unsorted = d.first_pass_only,
+    first_pass_only_sorted = d.final_with_num
+  )
+  
+  return(first_pass_data)
+}
+
+
+first_pass_list <- reformat_first_pass(
+    err_detection_df = d_main_batch1_48subj$err_detection_data
+)
+
+# this generates the main batch 1 48 subj data that ONLY include the first pass for error detection
+df_err_main_batch1_48subj_first_pass <- first_pass_list$first_pass_only_sorted
+
+# for other task data, we can still use those generated from the data preprocessing function at the very beginning.
+
+# write files for main-analysis
+# save in ../data/preprocessed/
+
+output_dir <- "../data/preprocessed/main_batch1/"
+
+# create sub folder to store preprocessed data if not 
+if (!dir.exists(output_dir)) {
+  print(paste("--- Directory does not exist. Creating:", output_dir, "---"))
+  dir.create(output_dir, recursive = TRUE)
+} else {
+  print(paste("--- Directory already exists:", output_dir, "---"))
+}
+
+file_err_first_pass <- file.path(output_dir, "48subj_err_detection_first_pass.csv")
+file_all_data <- file.path(output_dir, "48subj_all_data.csv")
+file_err_all_attempts <- file.path(output_dir, "48subj_err_detection_all_attempts.csv")
+file_questionnaire <- file.path(output_dir, "48subj_questionnaire_data.csv")
+file_transcription <- file.path(output_dir, "48subj_transcription_data.csv")
+
+write_csv(df_err_main_batch1_48subj_first_pass, file_err_first_pass)
+write_csv(df_all_main_batch1_48subj, file_all_data)
+write_csv(df_err_main_batch1_48subj, file_err_all_attempts)
+write_csv(df_quest_main_batch1_48subj, file_questionnaire)
+write_csv(df_transcrip_main_batch1_48subj, file_transcription)
+
+```
+
+
+
+### 2. Main batch 1: 4 test run subj data with fixed order (not full randomization, but first and second attempts are bundled together)
+```{r processing-main-data-subjects-batch1-fixed-order}
+
+d_main_batch1_4subj <- process_experiment_data(data_filepath = "../data/raw/main_102825_test_run_4_subj.csv",
+                                   stimulus_filepath = "../data/Stimuli_design.csv")
+
+df_all_main_batch1_4subj <- d_main_batch1_4subj$all_data
+df_err_main_batch1_4subj <- d_main_batch1_4subj$err_detection_data
+df_quest_main_batch1_4subj <- d_main_batch1_4subj$questionnaire_data
+df_transcrip_main_batch1_4subj <- d_main_batch1_4subj$transcription_data
+
+
+output_dir <- "../data/preprocessed/main_batch1/"
+
+# create sub folder to store preprocessed data if not 
+if (!dir.exists(output_dir)) {
+  print(paste("--- Directory does not exist. Creating:", output_dir, "---"))
+  dir.create(output_dir, recursive = TRUE)
+} else {
+  print(paste("--- Directory already exists:", output_dir, "---"))
+}
+
+file_all_data <- file.path(output_dir, "testrun_4subj_all_data.csv")
+file_err <- file.path(output_dir, "testrun_4subj_err_detection.csv")
+file_questionnaire <- file.path(output_dir, "testrun_4subj_questionnaire_data.csv")
+file_transcription <- file.path(output_dir, "testrun_4subj_transcription_data.csv")
+
+
+write_csv(df_all_main_batch1_4subj, file_all_data)
+write_csv(df_err_main_batch1_4subj, file_err)
+write_csv(df_quest_main_batch1_4subj, file_questionnaire)
+write_csv(df_transcrip_main_batch1_4subj, file_transcription)
+
+```
+
+
+
+
+
+### 3. Main batch 2: 4 subj data with fixed randomization (test run)
+
+```{r processing-main-data-subjects-batch2-fixed-randomization}
+d_main_batch2_4subj <- process_experiment_data(data_filepath = "../data/raw/main_110725_random_fixed_test_run_4subj.csv",
+                                   stimulus_filepath = "../data/Stimuli_design.csv")
+
+df_all_main_batch2_4subj <- d_main_batch2_4subj$all_data
+df_err_main_batch2_4subj <- d_main_batch2_4subj$err_detection_data
+df_quest_main_batch2_4subj <- d_main_batch2_4subj$questionnaire_data
+df_transcrip_main_batch2_4subj <- d_main_batch2_4subj$transcription_data
+
+# write files for main-analysis
+# save in ../data/preprocessed/
+
+output_dir <- "../data/preprocessed/main_batch2/"
+
+# create sub folder to store preprocessed data if not 
+if (!dir.exists(output_dir)) {
+  print(paste("--- Directory does not exist. Creating:", output_dir, "---"))
+  dir.create(output_dir, recursive = TRUE)
+} else {
+  print(paste("--- Directory already exists:", output_dir, "---"))
+}
+
+file_all_data <- file.path(output_dir, "testrun_4subj_all_data.csv")
+file_err <- file.path(output_dir, "testrun_4subj_err_detection.csv")
+file_questionnaire <- file.path(output_dir, "testrun_4subj_questionnaire_data.csv")
+file_transcription <- file.path(output_dir, "testrun_4subj_transcription_data.csv")
+
+write_csv(df_all_main_batch2_4subj, file_all_data)
+write_csv(df_err_main_batch2_4subj, file_err)
+write_csv(df_quest_main_batch2_4subj, file_questionnaire)
+write_csv(df_transcrip_main_batch2_4subj, file_transcription)
+```
+
+
+### 4. Transcription baseline data: batch 1 and 2 combined, 24 subj
+
+```{r processing-transcription-baseline-batch1-and-2-combined-and-test-run-4-subj}
+
+d_transcrip_baseline_batch1 <- process_experiment_data(data_filepath = "../data/raw/transcription_baseline_batch1_14subj.csv",
+                                   stimulus_filepath = "../data/Stimuli_design.csv")
+
+df_transcrip_transcrip_baseline_batch1 <- d_transcrip_baseline_batch1$transcription_data
+df_quest_transcrip_baseline_batch1 <- d_transcrip_baseline_batch1$questionnaire_data
+
+
+d_transcrip_baseline_batch2 <- process_experiment_data(data_filepath = "../data/raw/transcription_baseline_batch2_10subj.csv",
+                                   stimulus_filepath = "../data/Stimuli_design.csv")
+
+df_transcrip_transcrip_baseline_batch2 <- d_transcrip_baseline_batch2$transcription_data
+df_quest_transcrip_baseline_batch2 <- d_transcrip_baseline_batch2$questionnaire_data
+
+
+df_transcrip_baseline_all <- dplyr::bind_rows(df_transcrip_baseline_batch1, df_transcrip_baseline_batch2)
+df_transcrip_transcrip_baseline_all <- dplyr::bind_rows(df_transcrip_transcrip_baseline_batch1, df_transcrip_transcrip_baseline_batch2)
+df_quest_transcrip_baseline_all <- dplyr::bind_rows(df_quest_transcrip_baseline_batch1, df_quest_transcrip_baseline_batch2)
+
+
+# write files for main-analysis
+# save in ../data/preprocessed/
+
+output_dir <- "../data/preprocessed/transcrip_baseline/"
+
+# create sub folder to store preprocessed data if not 
+if (!dir.exists(output_dir)) {
+  print(paste("--- Directory does not exist. Creating:", output_dir, "---"))
+  dir.create(output_dir, recursive = TRUE)
+} else {
+  print(paste("--- Directory already exists:", output_dir, "---"))
+}
+
+file_all_data <- file.path(output_dir, "all_data.csv")
+file_questionnaire <- file.path(output_dir, "questionnaire_data.csv")
+file_transcription <- file.path(output_dir, "transcription_data.csv")
+
+write_csv(df_transcrip_baseline_all, file_all_data)
+write_csv(df_quest_transcrip_baseline_all, file_questionnaire)
+write_csv(df_transcrip_transcrip_baseline_all, file_transcription)
+```
+
+
+
+
+
+
+
+
+
