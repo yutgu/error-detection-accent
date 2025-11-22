@@ -22,3 +22,4 @@
 # 6. Un-ignore the NEW 'annotated' folder AND everything in it
 !annotated/
 !annotated/**
+.Rproj.user

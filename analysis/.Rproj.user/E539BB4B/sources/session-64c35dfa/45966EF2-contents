@@ -445,45 +445,45 @@ all_plots_transcrip_baseline <- generate_analysis_plots(d.transcrip.baseline.all
 time_plots_transcrip_baseline <- generate_time_analysis_plots(d.transcrip.baseline.all)
 ```
 
-```{r p1-analysis-plots, echo=FALSE, fig.cap="Figure 1: Overall Distribution of Transcription Performance - Baseline"}
+```{r p1-analysis-plots-transcription-baseline, echo=FALSE, fig.cap="Figure 1: Overall Distribution of Transcription Performance - Baseline"}
 
 print(all_plots_transcrip_baseline$p1)
 ```
 
-```{r p2-analysis-plots, echo=FALSE, fig.cap="Figure 2: Transcription Performance by Participant - Baseline"}
+```{r p2-analysis-plots-transcription-baseline, echo=FALSE, fig.cap="Figure 2: Transcription Performance by Participant - Baseline"}
 print(all_plots_transcrip_baseline$p2)
 ```
 
-```{r p3-analysis-plots, echo=FALSE, fig.cap="Figure 3: Distribution of Item Difficulty - Baseline"}
+```{r p3-analysis-plots-transcription-baseline, echo=FALSE, fig.cap="Figure 3: Distribution of Item Difficulty - Baseline"}
 print(all_plots_transcrip_baseline$p3)
 ```
 
 
-```{r p4-analysis-plots, echo=FALSE, fig.cap="Figure 4: Difficulty of Individual Sentences - Baseline"}
+```{r p4-analysis-plots-transcription-baseline, echo=FALSE, fig.cap="Figure 4: Difficulty of Individual Sentences - Baseline"}
 print(all_plots_transcrip_baseline$p4)
 ```
 
 
-```{r p5-analysis-plots, echo=FALSE, fig.cap="Figure 5: Performance by Number of Keywords - Baseline"}
+```{r p5-analysis-plots-transcription-baseline, echo=FALSE, fig.cap="Figure 5: Performance by Number of Keywords - Baseline"}
 print(all_plots_transcrip_baseline$p5)
 ```
 
 
-```{r p6-analysis-plots, echo=FALSE, fig.cap="Figure 6: Accuracy for Individual Keywords in Each Sentence - Baseline"}
+```{r p6-analysis-plots-transcription-baseline, echo=FALSE, fig.cap="Figure 6: Accuracy for Individual Keywords in Each Sentence - Baseline"}
 print(all_plots_transcrip_baseline$p6)
 ```
 
 
-```{r p7-analysis-plots, echo=FALSE, fig.cap="Figure 7: Top 20 Hardest Keywords (Across All Sentences) - Baseline"}
+```{r p7-analysis-plots-transcription-baseline, echo=FALSE, fig.cap="Figure 7: Top 20 Hardest Keywords (Across All Sentences) - Baseline"}
 print(all_plots_transcrip_baseline$p7)
 ```
 
 
-```{r p8-analysis-plot, echo=FALSE, fig.cap="Figure 8: Transcription Performance by Trial Order - Baseline"}
+```{r p8-analysis-plot-transcription-baseline, echo=FALSE, fig.cap="Figure 8: Transcription Performance by Trial Order - Baseline"}
 print(time_plots_transcrip_baseline$p8)
 ```
 
-```{r p9-analysis-plot, echo=FALSE, fig.cap="Figure 9: Individual Participant Performance by Trial Order - Baseline"}
+```{r p9-analysis-plot-transcription-baseline, echo=FALSE, fig.cap="Figure 9: Individual Participant Performance by Trial Order - Baseline"}
 print(time_plots_transcrip_baseline$p9)
 ```
 
@@ -864,7 +864,7 @@ print(paste("Analyzing", n_distinct(df_clean_attchp$participant_id), "participan
 ```
 
 
-```{r error-detection-data-plotting, message=FALSE, warning=FALSE}}
+```{r error-detection-data-plotting, message=FALSE, warning=FALSE}
 # make sure the data is ready for plotting
 # for example, examine whether there are any manual coding errors
 df_analysis_err <- df_clean_attchp %>%
@@ -1247,7 +1247,7 @@ p_target_sound_reporting <- ggplot(plot_summary_targ_other_sound,
   scale_fill_manual(values = c("Phonological (p) Response" = "skyblue", 
                                "Other Phonological (otherp) Response" = "lightcoral")) +
   
-  scale_y_continuous(labels = scales::percent_format(), limits = c(0, max(plot_summary_Q2$ymax) * 1.05)) +
+  scale_y_continuous(labels = scales::percent_format(), limits = c(0, max(plot_summary_targ_other_sound$ymax) * 1.05)) +
   labs(
     x = "Error Condition",
     y = "Mean Proportion of Responses",
