@@ -136,8 +136,10 @@ process_experiment_data <- function(data_filepath,
   print(unique(data$block_name))
   print(unique(data$branch_eligiblenotEligible))
   
+  # need to comment out the sanitycheck pass one when preprocessing batch 1 and batch 2 data as we didn't include the sanity check back then 
   data_clean <- data %>%
-    filter(branch_eligiblenotEligible == "eligible")
+    filter(branch_eligiblenotEligible == "eligible") %>% 
+    filter(branch_sanitycheckFailsanitycheckPass == "sanitycheckPass")
   
   print(paste("N of Eligible Participants =", n_distinct(data_clean$participant_id)))
   
@@ -521,12 +523,9 @@ d_processed <- data_clean %>%
   
   d.final <- d_processed %>%
     filter(
-      # --- THIS IS THE FIX ---
-      # Filter on the 'Block' column you created
       Block == "Error_Detection" | 
       Block == "Transcription" | 
       Block == "Questionnaire"
-      # --- END FIX ---
     ) %>%
     select(
       group_id, 
@@ -535,7 +534,7 @@ d_processed <- data_clean %>%
       stimuli_presented, 
       stimulus_files_presented, 
       trial_num, 
-      Block,  # We select the 'Block' column
+      Block,  
       item_base, 
       item_type, 
       Condition, 
@@ -544,7 +543,7 @@ d_processed <- data_clean %>%
       Answer
     ) %>%
     rename(
-      block = Block, # Then rename it
+      block = Block, 
       condition = Condition,
       phon_err_details = PhonErr_Details,
       answer = Answer
@@ -849,10 +848,37 @@ write_csv(df_transcrip_transcrip_baseline_all, file_transcription)
 ```
 
 
+### 5. Main batch 3: 4 suj data with correct randomization (test run)
 
+```{r processing-main-data-subjects-batch3-correct-randomization}
+d_main_batch3_4subj <- process_experiment_data(data_filepath = "../data/raw/main_112825_test_run_4subj.csv",
+                                   stimulus_filepath = "../data/Stimuli_design.csv")
 
+df_all_main_batch3_4subj <- d_main_batch3_4subj$all_data
+df_err_main_batch3_4subj <- d_main_batch3_4subj$err_detection_data
+df_quest_main_batch3_4subj <- d_main_batch3_4subj$questionnaire_data
+df_transcrip_main_batch3_4subj <- d_main_batch3_4subj$transcription_data
 
+# write files for main-analysis
+# save in ../data/preprocessed/
 
+output_dir <- "../data/preprocessed/main_batch3/"
 
+# create sub folder to store preprocessed data if not 
+if (!dir.exists(output_dir)) {
+  print(paste("--- Directory does not exist. Creating:", output_dir, "---"))
+  dir.create(output_dir, recursive = TRUE)
+} else {
+  print(paste("--- Directory already exists:", output_dir, "---"))
+}
 
+file_all_data <- file.path(output_dir, "testrun_4subj_all_data.csv")
+file_err <- file.path(output_dir, "testrun_4subj_err_detection.csv")
+file_questionnaire <- file.path(output_dir, "testrun_4subj_questionnaire_data.csv")
+file_transcription <- file.path(output_dir, "testrun_4subj_transcription_data.csv")
 
+write_csv(df_all_main_batch3_4subj, file_all_data)
+write_csv(df_err_main_batch3_4subj, file_err)
+write_csv(df_quest_main_batch3_4subj, file_questionnaire)
+write_csv(df_transcrip_main_batch3_4subj, file_transcription)
+```
