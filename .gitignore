@@ -1,25 +1,25 @@
-# Ensure .DS_Store is ignored globally across all directories
+# .DS_Store is ignored globally
 .DS_Store
 
-# 1. Ignore everything
+# 1. Ignore everything by default
 *
 
-# 2. But, un-ignore this .gitignore file itself
+# 2. Un-ignore the .gitignore file itself
 !.gitignore
 
-# 3. Un-ignore the project file metadata
-!.Rproj.user/
+# 3. Un-ignore the .Rproj file (keep the project file, ignore the user settings folder)
 !*.Rproj
 
-# 4. Un-ignore the 'analysis' folder AND everything in it
+# 4. Un-ignore the 'analysis' folder
 !analysis/
 !analysis/**
+# BUT re-ignore the user settings inside it:
+analysis/.Rproj.user/
 
-# 5. Un-ignore the 'data' folder AND everything in it
+# 5. Un-ignore the 'data' folder
 !data/
 !data/**
 
-# 6. Un-ignore the NEW 'annotated' folder AND everything in it
+# 6. Un-ignore the 'annotated' folder
 !annotated/
 !annotated/**
-.Rproj.user
