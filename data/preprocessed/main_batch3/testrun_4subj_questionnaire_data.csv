@@ -1,0 +1,139 @@
+group_id,participant_id,response_value,stimuli_presented,stimulus_files_presented,block,item_base,item_type,condition,nonphon_err_type,phon_err_details,answer,second_attempt_used,trial_num_sequential
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,5,instruction_clarity,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,1
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,3,error_detection_difficulty,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,2
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,4,trivia_accent_strength,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,3
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,3,transcription_accent_strength,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,4
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,Yes,speaker_identity_check,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,5
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,['English'],native_language,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,6
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,"Yes, they spoke English with a foreign accent other than the Spanish accent",household_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,7
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,No,current_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,8
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,2,exposure_spanish_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,9
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,2,exposure_spanish,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,10
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,Yes,same_state_5_year,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,11
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,Yes,same_state_5_year_yes,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,12
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,NA,questionnaire_part3_begin,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,13
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,Male,gender,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,14
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,['Black or African American'],race/ethnicity,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,15
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,2- or 4-year college degree,highest_level_edu,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,16
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,No,learnDis,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,17
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,No,attention,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,18
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,No,headInjury,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,19
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,No,neuroImpair,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,20
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,unsure,trivia_accent_identification,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,21
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,unsure,transcription_accent_identification,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,22
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,No,task_experience,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,23
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,"My partner american
+My roommate black american
+My boss African american",most_frequent_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,24
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,My mom speaks Portuguese and my dad speaks Twi,additional_language_experience,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,25
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,Ohio,origin_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,26
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,"Westerville, ohio",origin_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,27
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,Ohio,current_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,28
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,43085,current_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,29
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,NA,same_state_5_year_no,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,30
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,33,age,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,31
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,NA,diseaseDetail,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,32
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,Allow the transcrption to have a second listen,suggestions_improvement,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,33
+Group_4,1910d73d8c7614d915645cfbba67000570e91133d6a2445c4df93749096aadf4,No,technical_issues,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,34
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,5,instruction_clarity,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,1
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,2,error_detection_difficulty,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,2
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,3,trivia_accent_strength,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,3
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,5,transcription_accent_strength,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,4
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,No,speaker_identity_check,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,5
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,['English'],native_language,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,6
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,No,household_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,7
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,No,current_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,8
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,2,exposure_spanish_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,9
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,2,exposure_spanish,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,10
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,Yes,same_state_5_year,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,11
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,This doesn't apply to me becuase I answered 'No' previously,same_state_5_year_yes,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,12
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,NA,questionnaire_part3_begin,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,13
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,Female,gender,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,14
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,['White'],race/ethnicity,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,15
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,2- or 4-year college degree,highest_level_edu,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,16
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,No,learnDis,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,17
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,No,attention,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,18
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,No,headInjury,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,19
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,No,neuroImpair,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,20
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,Indian,trivia_accent_identification,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,21
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,Indian,transcription_accent_identification,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,22
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,It was just difficult to understand or interpret some of the words,task_experience,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,23
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,American,most_frequent_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,24
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,learned Spanish in high school and sometimes hear Spanish at work,additional_language_experience,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,25
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,California,origin_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,26
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,93401,origin_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,27
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,California,current_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,28
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,93401,current_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,29
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,NA,same_state_5_year_no,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,30
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,29,age,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,31
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,NA,diseaseDetail,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,32
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,NA,suggestions_improvement,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,33
+Group_2,4c207f52924d545f2a60b018885c527e9f24e06d889289ceba266904e22c6668,No,technical_issues,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,34
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,4,instruction_clarity,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,1
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,3,error_detection_difficulty,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,2
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,3,trivia_accent_strength,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,3
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,3,transcription_accent_strength,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,4
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,Yes,speaker_identity_check,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,5
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,['English'],native_language,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,6
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,No,household_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,7
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,No,current_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,8
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,1,exposure_spanish_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,9
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,1,exposure_spanish,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,10
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,Yes,same_state_5_year,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,11
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,Yes,same_state_5_year_yes,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,12
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,NA,questionnaire_part3_begin,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,13
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,Female,gender,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,14
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,['White'],race/ethnicity,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,15
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,2- or 4-year college degree,highest_level_edu,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,16
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,No,learnDis,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,17
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,No,attention,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,18
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,No,headInjury,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,19
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,No,neuroImpair,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,20
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,Unsure,trivia_accent_identification,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,21
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,Unsure,transcription_accent_identification,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,22
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,No,task_experience,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,23
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,"My spouse, American; my colleague, American; my friend, American",most_frequent_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,24
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,none,additional_language_experience,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,25
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,South Carolina,origin_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,26
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,29666,origin_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,27
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,South Carolina,current_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,28
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,29733,current_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,29
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,NA,same_state_5_year_no,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,30
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,26,age,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,31
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,NA,diseaseDetail,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,32
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,"Nothing much really, the experiment was well delivered",suggestions_improvement,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,33
+Group_3,6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765,no,technical_issues,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,34
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,2,instruction_clarity,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,1
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,5,error_detection_difficulty,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,2
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,5,trivia_accent_strength,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,3
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,5,transcription_accent_strength,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,4
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,Yes,speaker_identity_check,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,5
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,['English'],native_language,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,6
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,No,household_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,7
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,No,current_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,8
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,3,exposure_spanish_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,9
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,2,exposure_spanish,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,10
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,Yes,same_state_5_year,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,11
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,Yes,same_state_5_year_yes,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,12
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,NA,questionnaire_part3_begin,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,13
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,Male,gender,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,14
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,['White'],race/ethnicity,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,15
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,Some college,highest_level_edu,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,16
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,No,learnDis,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,17
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,No,attention,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,18
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,No,headInjury,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,19
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,No,neuroImpair,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,20
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,middle eastern,trivia_accent_identification,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,21
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,middle eastern,transcription_accent_identification,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,22
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,Yes is was frustrating not be able to re listen to it and not being able to understand through the thick accent.,task_experience,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,23
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,everyone I know or talk to speaks clear American English except for neighbors that I can hear outside of where I live that speak spanish and Broken English but I don't know them.,most_frequent_accent,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,24
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,I only took one Spanish class in high school and only know a few Spanish words.,additional_language_experience,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,25
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,Northern California,origin_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,26
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,95682,origin_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,27
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,Nevada,current_state,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,28
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,89506,current_zipcode,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,29
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,NA,same_state_5_year_no,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,30
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,45,age,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,31
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,NA,diseaseDetail,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,32
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,add how many sentences are left to know where you are in the study.,suggestions_improvement,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,33
+Group_1,a00d8bd974c078cbaf7a22a5c07693b2c97a5a00dba9cd63477c4774774936ec,No,technical_issues,NA,Questionnaire,NA,other_non_err_detection,NA,NA,NA,NA,No,34
