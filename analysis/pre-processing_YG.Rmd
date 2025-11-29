@@ -881,4 +881,15 @@ write_csv(df_all_main_batch3_4subj, file_all_data)
 write_csv(df_err_main_batch3_4subj, file_err)
 write_csv(df_quest_main_batch3_4subj, file_questionnaire)
 write_csv(df_transcrip_main_batch3_4subj, file_transcription)
+
+
+df_err_main_batch3_4subj_att_top <- df_err_main_batch3_4subj %>%
+  group_by(participant_id) %>%
+  arrange(desc(str_detect(item_type, "^att_check")), .by_group = TRUE) %>%
+  ungroup()
+
+# save the file for attention check trials on the top
+# this is useful for manual checking of attention check trials
+# when we ask RAs to code the response
+write_csv(df_err_main_batch3_4subj_att_top, file.path(output_dir, "testrun_4subj_err_detection_attcheck_top.csv"))
 ```
