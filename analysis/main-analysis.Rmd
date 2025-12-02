@@ -857,7 +857,6 @@ print(p_fam_acc)
 
 # load data and exclude participants who failed the attention checks
 
-
 tryCatch({
  
   df_fb <- read_csv("../data/annotated/main_batch1_first_pass_only_FB.csv")
@@ -954,11 +953,8 @@ df_analysis_err <- df_clean_attchp %>%
   # 'y' stands for 'yes, the question needs to be corrected'
   # 'nans' stands for 'the question does NOT need any corrections'
   # 'nun' stands for 'not sure / unsure'
-  filter(err_reported_clean %in% c("y", "nans", "nun"))
-
-
+  filter(err_reported_clean %in% c("y", "nans", "nun")) %>%
 #### Was there error reported? Grouped bar chart with error bars ####
-df_analysis_err <- df_analysis_err %>%
   mutate(
     err_reported_label = case_when(
       err_reported_clean == "nans" ~ "Question has no errors",
@@ -1032,7 +1028,10 @@ p_grouped_chart_err_reported <- ggplot(plot_summary_with_error_grouped,
   )
 
 print(p_grouped_chart_err_reported)
+```
 
+
+```{r error-detection-data-plotting-type, message=FALSE, warning=FALSE}
 #### Did participants report the intended errors when they said that there were errors (needs correction)? Crosstab ####
 
 participant_detections <- df_analysis_err %>%
@@ -1128,7 +1127,10 @@ p_hit_rate_chart <- ggplot(plot_summary_with_error,
   )
 
 print(p_hit_rate_chart)
+```
 
+
+```{r error-detection-data-plotting-change, message=FALSE, warning=FALSE}
 #### Rate of phonological error detection rate over the experiment ####
 
 # here we examine whether participants got better or worse at detecting phonological errors as the experiment progressed
@@ -1205,9 +1207,11 @@ df_analysis_err <- df_analysis_err %>%
   group_by(participant_id) %>%
   mutate(trial_num_sequential = row_number()) %>%
   ungroup()
+```
 
+```{r error-detection-data-plotting-sound errors, message=FALSE, warning=FALSE}
 # filter data to only include trials where a PHONOLOGICAL error was present
-df_phon_error_trials <- df_analysis_err %>%
+df_phon_error_trials <- df_analysis_err %>% ## yuting: can you modify the code so that there are not repeated columns with the same column names when joining data frames? It is very confusing and error-prone to have columns like (condition.x, condition.y, etc)
   filter(condition.x %in% c("phon_err", "both_err"))
 
 # calculate a binary variable for successful PHONOLOGICAL detection
@@ -1332,7 +1336,9 @@ p_target_sound_reporting <- ggplot(plot_summary_targ_other_sound,
   )
 
 print(p_target_sound_reporting)
+```
 
+```{r error-detection-data-plotting-accent familiarity, message=FALSE, warning=FALSE}
 
 #### Role of accent familiarity ####
 
@@ -1444,9 +1450,9 @@ p_hit_rate_chart_familiarity <- ggplot(plot_summary_with_error_fam,
 
 print(p_hit_rate_chart_familiarity)
 
+```
 
-
-
+```{r error-detection-data-plotting-accent familiarity-change, message=FALSE, warning=FALSE}
 ##### accent familiarity X detection of phon errors over time #####
 
 df_detection_time_with_familiarity <- df_phon_detection_time %>%
@@ -1511,6 +1517,7 @@ print(p_detection_time_by_familiarity)
 
 
 ```{r error-detection-annotated-data-main-batch3-3subj, message=FALSE, warning=FALSE}
+## yuting: can we clean up the code so that different batches of data go through the same chunk of code? There is too much redundancy 
 
 # load data and exclude participants who failed the attention checks
 
@@ -1586,6 +1593,7 @@ tryCatch({
     left_join(df_quest, by = "participant_id")
 })
 
+## yuting: can you check this part? In "df_exp_all", there are trials where it is marked "secsame", but in the "df_final_joined" only first attempts are present. 
 
 df_clean_attchp <- df_final_joined %>%
   filter(attention_check_passed == TRUE) %>% 
@@ -1610,9 +1618,7 @@ df_analysis_err <- df_clean_attchp %>%
   filter(err_reported_clean != "s") %>% 
   filter(stim_type == "target") %>% 
   filter(condition.x %in% c("correct", "phon_err", "non_phon_err", "both_err")) %>%
-  filter(err_reported_clean %in% c("y", "nans", "nun"))
-
-df_analysis_err <- df_analysis_err %>%
+  filter(err_reported_clean %in% c("y", "nans", "nun")) %>%
   mutate(
     condition.x = factor(condition.x, levels = c("correct", "phon_err", "non_phon_err", "both_err")),
     err_reported_label = case_when(
@@ -1621,9 +1627,6 @@ df_analysis_err <- df_analysis_err %>%
       err_reported_clean == "y"    ~ "Question needs correction"
     )
   )
-
-
-#### (A) Was there error reported? ####
 
 # % per participant
 participant_props <- df_analysis_err %>%
@@ -1646,6 +1649,11 @@ plot_summary_err_reported <- participant_props %>%
     .groups = "drop"
   ) %>%
   mutate(ymin = Mean_Proportion - SE, ymax = Mean_Proportion + SE)
+```
+
+```{r error-detection-data-plotting-main-batch3-3subj-overall, message=FALSE, warning=FALSE}
+
+#### (A) Was there error reported? ####
 
 p_grouped_chart_err_reported <- ggplot(plot_summary_err_reported, 
                                      aes(x = condition.x, y = Mean_Proportion, fill = err_reported_label, ymin = ymin, ymax = ymax)) +
@@ -1658,7 +1666,6 @@ p_grouped_chart_err_reported <- ggplot(plot_summary_err_reported,
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12), legend.position = "top")
 
 print(p_grouped_chart_err_reported)
-
 
 #### (B) Hit Rate: Did they report the INTENDED error? ####
 
@@ -1787,7 +1794,9 @@ p_noerr_accuracy_chart <- ggplot(plot_summary_noerr,
 
 print(p_noerr_accuracy_chart)
 
+```
 
+```{r error-detection-data-plotting-main-batch3-3subj-type, message=FALSE, warning=FALSE}
 #### (E) Detailed Error Type Breakdown ####
 # what kind of errors are being reported in detail
 
@@ -1810,8 +1819,9 @@ p_detailed_types <- ggplot(df_detailed_types, aes(x = err_type_response, y = Pro
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 10), legend.position = "none")
 
 print(p_detailed_types)
+```
 
-
+```{r error-detection-data-plotting-main-batch3-3subj-change, message=FALSE, warning=FALSE}
 #### (F) Rate of phonological error detection rate over the experiment ####
 
 df_analysis_err <- df_analysis_err %>%
@@ -1838,7 +1848,10 @@ p_detection_over_time_overall <- ggplot(df_phon_detection_time,
   theme_bw()
 
 print(p_detection_over_time_overall)
+```
 
+
+```{r error-detection-data-plotting-main-batch3-3subj-accent familiarity, message=FALSE, warning=FALSE}
 
 #### (G) Role of Spanish accent familiarity ####
 
@@ -1973,7 +1986,9 @@ p_detection_time_by_familiarity <- ggplot(df_detection_time_with_familiarity,
 
 print(p_detection_time_by_familiarity)
 
+```
 
+```{r error-detection-data-plotting-main-batch3-3subj-bias, message=FALSE, warning=FALSE}
 #### (H) False Alarm (Response Bias) ####
 # definition: How often do participants report an error when the sentence is actually CORRECT?
 
@@ -1998,8 +2013,9 @@ p_false_alarms <- ggplot(df_false_alarms, aes(x = FA_Rate)) +
   theme_bw()
 
 print(p_false_alarms)
+```
 
-
+```{r error-detection-data-plotting-main-batch3-3subj-inference, message=FALSE, warning=FALSE}
 #### (I) Interference Analysis ####
 ##### (I1)Does the presence of a Non-Phonological error make it harder to detect the Phonological one? #####
 # compare 'phon_err' (Single) vs 'both_err' (Double)
