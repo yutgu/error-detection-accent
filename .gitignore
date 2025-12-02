@@ -23,3 +23,6 @@ analysis/.Rproj.user/
 # 6. Un-ignore the 'annotated' folder
 !annotated/
 !annotated/**
+
+# 7. Globally re-ignore specific files
+.Rhistory
