@@ -569,6 +569,7 @@ d_processed <- data_clean %>%
     ungroup() %>% 
     select(-trial_num)
   
+
   # sanity checks
 
   participant_count_final <- n_distinct(d.final$participant_id)
@@ -586,6 +587,9 @@ d_processed <- data_clean %>%
     summarise(n_participants = n(), .groups = 'drop')
   print("--- Participants per block in final data ---")
   print(block_counts)
+  
+  d.final <- d.final %>%
+    mutate(participant_num = as.integer(as.factor(participant_id)))
   
 # create separate data files for analysis  
 d_err_detection <- d.final %>%
@@ -892,4 +896,51 @@ df_err_main_batch3_4subj_att_top <- df_err_main_batch3_4subj %>%
 # this is useful for manual checking of attention check trials
 # when we ask RAs to code the response
 write_csv(df_err_main_batch3_4subj_att_top, file.path(output_dir, "testrun_4subj_err_detection_attcheck_top.csv"))
+```
+
+
+### 6. Main batch 3: 48 suj data with correct randomization
+
+```{r processing-main-data-subjects-batch3-correct-randomization}
+d_main_batch3_48subj <- process_experiment_data(data_filepath = "../data/raw/main_120325_48subj.csv",
+                                   stimulus_filepath = "../data/Stimuli_design.csv")
+
+df_all_main_batch3_48subj <- d_main_batch3_48subj$all_data
+df_err_main_batch3_48subj <- d_main_batch3_48subj$err_detection_data
+df_quest_main_batch3_48subj <- d_main_batch3_48subj$questionnaire_data
+df_transcrip_main_batch3_48subj <- d_main_batch3_48subj$transcription_data
+
+# write files for main-analysis
+# save in ../data/preprocessed/
+
+output_dir <- "../data/preprocessed/main_batch3/"
+
+# create sub folder to store preprocessed data if not 
+if (!dir.exists(output_dir)) {
+  print(paste("--- Directory does not exist. Creating:", output_dir, "---"))
+  dir.create(output_dir, recursive = TRUE)
+} else {
+  print(paste("--- Directory already exists:", output_dir, "---"))
+}
+
+file_all_data <- file.path(output_dir, "48subj_all_data.csv")
+file_err <- file.path(output_dir, "48subj_err_detection.csv")
+file_questionnaire <- file.path(output_dir, "48subj_questionnaire_data.csv")
+file_transcription <- file.path(output_dir, "48subj_transcription_data.csv")
+
+write_csv(df_all_main_batch3_48subj, file_all_data)
+write_csv(df_err_main_batch3_48subj, file_err)
+write_csv(df_quest_main_batch3_48subj, file_questionnaire)
+write_csv(df_transcrip_main_batch3_48subj, file_transcription)
+
+
+df_err_main_batch3_48subj_att_top <- df_err_main_batch3_48subj %>%
+  group_by(participant_id) %>%
+  arrange(desc(str_detect(item_type, "^att_check")), .by_group = TRUE) %>%
+  ungroup()
+
+# save the file for attention check trials on the top
+# this is useful for manual checking of attention check trials
+# when we ask RAs to code the response
+write_csv(df_err_main_batch3_48subj_att_top, file.path(output_dir, "48subj_err_detection_attcheck_top.csv"))
 ```

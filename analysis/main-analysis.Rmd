@@ -527,6 +527,96 @@ df_analysis_targets <- df_clean_all_trials %>%
   ) %>%
   filter(err_reported_clean %in% c("y", "nans", "nun"))
 
+##### power analysis on 3 test run subejcts #####
+install.packages("pwr")
+library(pwr)
+
+
+# calculate two distinct "scores" for every trial:
+# 1. score_phon: Did they find the Phonological error?
+# 2. score_nonphon: Did they find the Non-Phonological error?
+
+df_power_prep <- df_analysis_targets %>%
+  mutate(
+    score_phon = case_when(
+      err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both") ~ 1,
+      TRUE ~ 0
+    ),
+    score_nonphon = case_when(
+      err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both") ~ 1,
+      TRUE ~ 0
+    )
+  )
+
+
+run_paired_power <- function(data, cond1_name, cond2_name, metric1, metric2, label) {
+  
+  d1 <- data %>% filter(condition == cond1_name) %>% select(participant_id, val = all_of(metric1))
+  d2 <- data %>% filter(condition == cond2_name) %>% select(participant_id, val = all_of(metric2))
+  
+  paired_data <- inner_join(d1, d2, by = "participant_id", suffix = c("_c1", "_c2")) %>%
+    group_by(participant_id) %>%
+    summarise(
+      mean_c1 = mean(val_c1),
+      mean_c2 = mean(val_c2),
+      .groups = "drop"
+    ) %>%
+    mutate(diff = mean_c1 - mean_c2)
+  
+  # calculate effect size
+  mean_diff <- mean(paired_data$diff)
+  sd_diff <- sd(paired_data$diff)
+  
+  if (is.na(sd_diff) || sd_diff == 0) {
+    effect_d <- 0.5 # Default fallback
+    note <- " (Defaulted due to 0 variance)"
+  } else {
+    effect_d <- mean_diff / sd_diff
+    note <- ""
+  }
+  
+
+  pwr_out <- pwr.t.test(
+    d = abs(effect_d), 
+    power = 0.80, 
+    sig.level = 0.05, 
+    type = "paired", 
+    alternative = "two.sided"
+  )
+  
+  return(tibble(
+    Hypothesis = label,
+    Condition_A = cond1_name,
+    Condition_B = cond2_name,
+    Effect_Size_d = round(effect_d, 3),
+    Required_N = ceiling(pwr_out$n),
+    Note = note
+  ))
+}
+
+
+# Analysis 1: Does adding Non-Phon mask Phon?
+# compare Phon detection in 'phon_err' vs 'both_err'
+res1 <- run_paired_power(df_power_prep, "phon_err", "both_err", "score_phon", "score_phon", "1. Phon Interference")
+
+# Analysis 2: Does adding Phon mask Non-Phon?
+# compare Non-Phon detection in 'non_phon_err' vs 'both_err'
+res2 <- run_paired_power(df_power_prep, "non_phon_err", "both_err", "score_nonphon", "score_nonphon", "2. Non-Phon Interference")
+
+# Analysis 3: Is Phon easier to spot than Non-Phon?
+# compare Phon detection in 'phon_err' vs Non-Phon detection in 'non_phon_err'
+res3 <- run_paired_power(df_power_prep, "phon_err", "non_phon_err", "score_phon", "score_nonphon", "3. Relative Salience")
+
+
+
+final_table <- bind_rows(res1, res2, res3)
+
+print(final_table)
+
+max_n <- max(final_table$Required_N)
+safe_n <- max_n + 5 
+
+# An a priori power analysis based on data from the test run where the randomization worked correctly (N=3). For the primary hypothesis (Phonological Interference: Does the presence of a second error (Non-Phonological) make it harder for the participant to spot the Phonological error?), it suggested that a sample size of N=26 would be sufficient to achieve 80% power at alpha=.05. If we account for participant exclusion rates and we want to improve sensitivity for secondary and other hypotheses, we could set a target sample size of N=40 
 ```
 
 
