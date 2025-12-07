@@ -87,6 +87,9 @@ library(digest)
 library(ggbeeswarm)
 
 library(Hmisc)
+
+# power analysis
+library(pwr)
 ```
 
 
@@ -98,11 +101,11 @@ dodge_amt2 <- 0.5
 
 # set the theme for graphs 
 theme_set(
-  theme_minimal(base_size = 20) +  
+  theme_minimal(base_size = 14) +  
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
     axis.text.y = element_text(size = 14),
-    axis.title = element_text(size = 16, face = "bold"),
-    plot.title = element_text(face = "bold", size = 16),
+    axis.title = element_text(size = 14, face = "bold"),
+    plot.title = element_text(face = "bold", size = 14),
     legend.title = element_text(face = "bold", size = 14),
     legend.text = element_text(size = 14),
     legend.position = "top",
@@ -110,278 +113,8 @@ theme_set(
   # panel.background = element_rect(fill = "transparent")))
 ```
 
-### 1. Transcription data analysis
 
-```{r transcription-data-cleaning-pipeline, message=FALSE, warning=FALSE, echo=FALSE}
-
-# helper function: scoring keywords
-
-# clean special characters
-mgsub <- function(pattern, replacement, x, ...) {
-  result <- x
-  for (i in 1:length(pattern)) {
-    result <- gsub(pattern[i], replacement[i], result, ...)
-  }
-  result
-}
-
-# keywords scoring
-num.keywords.correct <- function(transcription, keywords) {
-  keys <- gsub("[[:punct:]]", "", tolower(as.character(keywords)))
-  trans <- gsub("[[:punct:]]", "", tolower(as.character(transcription)))
-  keys.list <- unlist(strsplit(keys, " "))
-  trans.list <- unlist(strsplit(trans, " "))
-  return(sum(!is.na(pmatch(keys.list, trans.list))))
-}
-
-# keywords checking
-check_keywords_correct <- function(transcription, keywords, trial_id, filename, participant_id) {
-  keys <- gsub("[[:punct:]]", "", tolower(as.character(keywords)))
-  trans <- gsub("[[:punct:]]", "", tolower(as.character(transcription)))
-  keys.list <- unlist(strsplit(keys, " "))
-  trans.list <- unlist(strsplit(trans, " "))
-  
-  correct_matches <- keys.list %in% trans.list
-  
-  return(data.frame(
-    trial_id = trial_id,
-    participant_id = participant_id,
-    Filename = filename,
-    keyword = keys.list,
-    is_correct = correct_matches
-  ))
-}
-
-clean_questionnaire_robust <- function(file_path) {
-  df_raw <- read_csv(file_path, show_col_types = FALSE)
-  df_subset <- df_raw %>%
-    filter(stimuli_presented %in% c("exposure_spanish_accent", "exposure_spanish")) %>%
-    select(participant_id, question_id = stimuli_presented, answer = response_value)
-  
-  df_wide <- df_subset %>%
-    pivot_wider(names_from = question_id, values_from = answer) %>%
-    rename_with(~ paste0("quest_", .), .cols = -participant_id)
-  
-  return(df_wide)
-}
-
-
-# batch processing transcription data
-process_transcription_batch <- function(folder_name, group_label, batch_label, has_questionnaire) {
-  
-  message(paste("Processing:", batch_label, "..."))
-  
-  target_folder <- file.path("../data/preprocessed", folder_name)
-  trans_file <- list.files(target_folder, pattern = "transcription_data.csv", full.names = TRUE, recursive = TRUE)[1]
-  key_file <- "../data/transcription_scoring.txt"
-  
-  if(is.na(trans_file)) { warning(paste("Missing data for", batch_label)); return(NULL) }
-
-  d <- read.csv(trans_file)
-  key.df <- read.delim(key_file, header = TRUE, sep = ",")
-  key.df$Sentence <- as.character(key.df$Sentence)
-  
-  d.trans <- subset(d, !is.na(stimulus_files_presented) & stimulus_files_presented != "" & block == "Transcription")
-  d.trans$Filename <- basename(as.character(d.trans$stimulus_files_presented))
-  d.trans$Transcription <- d.trans$response_value
-  
-  d.all.m <- merge(d.trans, subset(key.df, select = -c(SentenceSet)),
-                   by.x = "Filename", by.y = "Sentence", sort = FALSE)
-  
-  chars <- c("<", ">", '"', ",", ";", "|", "'")
-  char_codes <- c("&lt&", "&gt&", "&quot&", "&comma&", "&semicol&", "&pipe&", "&apos&")
-  
-  d.all.m <- within(d.all.m, {
-    Transcription <- tolower(mgsub(char_codes, chars, Transcription))
-    NumKeywordsCorrect <- mapply(num.keywords.correct, Transcription, Keywords)
-    PropKeywordsCorrect <- NumKeywordsCorrect / NumKeywords
-  })
-  
-
-  d.all.m$trial_id <- 1:nrow(d.all.m)
-  
-
-  d.all.m$quest_exposure_spanish_accent <- NA 
-  if(has_questionnaire) {
-    quest_file <- list.files(target_folder, pattern = "questionnaire_data.csv", full.names = TRUE, recursive = TRUE)[1]
-    if(!is.na(quest_file)) {
-      df_quest <- clean_questionnaire_robust(quest_file)
-      d.all.m <- left_join(d.all.m, df_quest, by = "participant_id")
-      if("quest_exposure_spanish_accent.y" %in% names(d.all.m)) {
-        d.all.m$quest_exposure_spanish_accent <- d.all.m$quest_exposure_spanish_accent.y
-      }
-    }
-  } 
-  
-  d.all.m$batch_id <- batch_label
-  d.all.m$group <- group_label 
-  
-  return(d.all.m)
-}
-
-batch_manifest <- tribble(
-  ~folder_name,          ~group_label, ~batch_label,     ~has_questionnaire,
-  "transcrip_baseline",  "baseline",   "Baseline",       FALSE,
-  "main_batch3",         "main",       "Main Batch 3",   TRUE
-)
-
-df_transcription_all <- pmap_dfr(batch_manifest, process_transcription_batch)
-exclude_id <- "6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765"
-df_transcription_all <- df_transcription_all %>% 
-  filter(participant_id != exclude_id) %>%
-  group_by(participant_id) %>%
-  mutate(trial_order = row_number()) %>%
-  ungroup()
-
-
-
-
-run_transcription_plots <- function(df_input) {
-  
-  
-  # Overall Distribution
-  mean_scores <- df_input %>% group_by(batch_id) %>% summarise(M = mean(PropKeywordsCorrect))
-  p1 <- ggplot(df_input, aes(x = PropKeywordsCorrect)) +
-    geom_histogram(binwidth = 0.1, fill = "steelblue", color = "white", alpha = 0.9) +
-    geom_vline(data = mean_scores, aes(xintercept = M), color = "darkorange", linetype = "dashed", linewidth = 1) +
-    facet_wrap(~batch_id) +
-    labs(title = "P1: Distribution of Transcription Performance", x = "Proportion Correct") +
-    theme_bw()
-  
-  # Participant Performance 
-  summ_subj <- df_input %>% group_by(batch_id, participant_id) %>% summarise(Mean = mean(PropKeywordsCorrect), .groups="drop")
-  p2 <- ggplot(summ_subj, aes(x = batch_id, y = Mean, fill = batch_id)) +
-    geom_boxplot(outlier.shape = NA, alpha=0.3) +
-    geom_jitter(width=0.2, color="darkred", size=2, alpha=0.6) +
-    labs(title = "P2: Transcription Performance by Participant", y = "Mean Proportion Correct") +
-    theme_bw() + theme(legend.position="none")
-
-  # Item Difficulty Distribution
-  item_means_batch <- df_input %>%
-    group_by(Filename, batch_id) %>%
-    summarise(Mean = mean(PropKeywordsCorrect), .groups="drop")
-  
-  mean_item_diff <- item_means_batch %>% group_by(batch_id) %>% summarise(M = mean(Mean))
-  
-  p3 <- ggplot(item_means_batch, aes(x = Mean)) +
-    geom_histogram(binwidth = 0.1, fill = "mediumpurple", color = "white", alpha = 0.9) +
-    geom_vline(data = mean_item_diff, aes(xintercept = M), color = "gold", linetype = "dashed", linewidth = 1.2) +
-    facet_wrap(~batch_id) + # <--- Now faceted!
-    labs(title = "P3: Distribution of Item Difficulty", x = "Mean Prop Correct (per Sentence)") +
-    theme_bw()
-
-  # Sentence Difficulty 
-  item_means_clean <- item_means_batch %>% mutate(Filename_clean = gsub(".wav", "", Filename))
-  
-  p4 <- ggplot(item_means_clean, aes(x = Mean, y = reorder(Filename_clean, Mean))) +
-    geom_point(aes(color = Mean), size = 3) +
-    facet_wrap(~batch_id, scales="free_x") + # <--- Split by batch
-    scale_color_gradient(low = "red", high = "green") +
-    labs(title = "P4: Difficulty of Individual Sentences", x = "Mean Proportion Correct", y = "Sentence") +
-    theme_bw() + theme(axis.text.y = element_text(size=6))
-
-  # Performance by Number of Keywords 
-  p5 <- ggplot(df_input, aes(x = NumKeywords, y = PropKeywordsCorrect, color = batch_id)) +
-    geom_jitter(width = 0.2, alpha = 0.3) +
-    geom_smooth(method = "lm", se=FALSE) + 
-    labs(title = "P5: Performance by Number of Keywords", x = "Number of Keywords", y = "Proportion Correct") +
-    theme_bw()
-
-  message("  - Calculating keyword-level accuracy by batch...")
-  keyword_long_df <- pmap_dfr(
-    list(df_input$Transcription, df_input$Keywords, df_input$trial_id, df_input$Filename, df_input$participant_id),
-    check_keywords_correct 
-  )
-
-  keyword_long_df <- keyword_long_df %>% 
-    left_join(df_input %>% select(trial_id, batch_id), by="trial_id")
-
-  # Accuracy for Individual Keywords
-  keyword_acc_batch <- keyword_long_df %>% 
-    group_by(Filename, keyword, batch_id) %>% 
-    summarise(P = mean(is_correct), .groups="drop")
-  
-  p6 <- ggplot(keyword_acc_batch, aes(x = reorder(keyword, P), y = P, fill = batch_id)) +
-    geom_col(position = position_dodge(width=0.8), color="black", width=0.7) + 
-    facet_wrap(~ Filename, scales = "free_x") + 
-    labs(title = "P6: Accuracy for Individual Keywords (by Batch)", x = "Keyword") +
-    theme_bw() + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size=6), legend.position="top")
-
-  # Top 20 Hardest Keywords
-  overall_kw_batch <- keyword_long_df %>% 
-    group_by(keyword, batch_id) %>% 
-    summarise(P = mean(is_correct), N=n(), .groups="drop") %>% 
-    group_by(batch_id) %>%
-    arrange(P) %>% slice_head(n=20) 
-  
-  p7 <- ggplot(overall_kw_batch, aes(x = reorder(keyword, P), y = P, fill=batch_id)) +
-    geom_col(color = "white", alpha = 0.8) +
-    facet_wrap(~batch_id, scales="free_y") + 
-    labs(title = "P7: Top 20 Hardest Keywords per Batch", x = "Keyword", y = "Proportion Correct") +
-    coord_flip() + theme_bw() + theme(legend.position="none")
-
-  # Accuracy Over Time (Group Average)
-  summ_time <- df_input %>%
-    group_by(trial_order, group) %>%
-    summarise(stats = list(smean.cl.boot(PropKeywordsCorrect)), .groups="drop") %>%
-    tidyr::unnest_wider(stats)
-  
-  p8 <- ggplot(summ_time, aes(x = trial_order, y = Mean, color = group, fill=group)) +
-    geom_line(linetype = "dashed") +
-    geom_ribbon(aes(ymin=Lower, ymax=Upper), alpha=0.2, linetype=0) +
-    geom_smooth(data=df_input, aes(x=trial_order, y=PropKeywordsCorrect), method="lm", se=TRUE, alpha=0.1) +
-    labs(title = "P8: Accuracy Over Time (Group Trend)", x="Trial", y="Mean Accuracy") +
-    scale_y_continuous(limits=c(0,1)) + theme_bw()
-
-  # Individual Accuracy Over Time 
-  p9 <- ggplot(df_input, aes(x = trial_order, y = PropKeywordsCorrect, color=batch_id)) +
-    geom_point(alpha = 0.4) +
-    geom_smooth(method = "lm", se = FALSE) +
-    facet_wrap(~ participant_id, ncol = 4) +
-    scale_y_continuous(limits = c(0, 1.0)) + 
-    labs(title = "P9: Individual Participant Trends", color="Batch") +
-    theme_bw() + theme(strip.text = element_text(size=6), legend.position="top")
-
-  # Accent Familiarity
-  summ_data <- df_input %>%
-    group_by(batch_id) %>%
-    summarise(stats = list(smean.cl.boot(PropKeywordsCorrect)), .groups = "drop") %>%
-    tidyr::unnest_wider(stats)
-  p10 <- ggplot(summ_data, aes(x = batch_id, y = Mean, color = batch_id)) +
-    geom_jitter(data = df_input, aes(y = PropKeywordsCorrect), alpha = 0.1, width=0.2) +
-    geom_point(size = 4) +
-    geom_errorbar(aes(ymin = Lower, ymax = Upper), width = 0.1, linewidth = 1.2) +
-    labs(title = "P10: Group Comparison (Bootstrapped)", x="Group") + theme_bw()
-
-  p_11 <- NULL
-  if("quest_exposure_spanish_accent" %in% names(df_input)) {
-    df_fam <- df_input %>% filter(!is.na(quest_exposure_spanish_accent))
-    if(nrow(df_fam) > 0) {
-       df_fam <- df_fam %>%
-        mutate(fam = factor(as.numeric(quest_exposure_spanish_accent), levels=1:5, labels=c("Never", "Sometimes", "Half", "Often", "Always"))) %>%
-        group_by(participant_id, group, fam) %>% summarise(M=mean(PropKeywordsCorrect), .groups="drop")
-      
-      p_fam <- ggplot(df_fam, aes(x = fam, y = M, fill=group)) +
-        geom_boxplot(alpha=0.4) + geom_point(position=position_jitterdodge(), alpha=0.6) +
-        labs(title = "P11: Familiarity vs Accuracy") + theme_bw()
-    }
-  }
-
-  print(p1); print(p2); print(p3); print(p4); print(p5); 
-  print(p6); print(p7); print(p8); print(p9); print(p10)
-  if(!is.null(p_fam)) print(p_fam)
-  
-  message("Successfully generated all plots!")
-}
-
-
-run_transcription_plots(df_transcription_all)
-
-```
-
-
-
-### 2. Error detection data analysis
+### 1 . Error detection data analysis
 
 
 ```{r error-detection-data-cleaning-pipeline, message=FALSE, warning=FALSE, echo=FALSE}
@@ -471,13 +204,13 @@ process_batch_error_detection <- function(batch_pattern, batch_label, folder_nam
 #### define the batches ####
 batch_manifest <- tribble(
   ~batch_pattern, ~batch_label,           ~folder_name,
-  "batch3",       "Batch 3 (Test Run)",   "main_batch3"
+  "batch3",       "Batch 3",   "main_batch3"
 )
 
 # run the pipeline
 df_raw_joined <- pmap_dfr(batch_manifest, process_batch_error_detection)
 
-# Filter for Passed Participants Only
+# filter for passed participants only 
 df_clean_all_trials <- df_raw_joined %>%
   filter(attention_check_passed == TRUE) %>% 
   distinct()
@@ -528,9 +261,6 @@ df_analysis_targets <- df_clean_all_trials %>%
   filter(err_reported_clean %in% c("y", "nans", "nun"))
 
 ##### power analysis on 3 test run subejcts #####
-install.packages("pwr")
-library(pwr)
-
 
 # calculate two distinct "scores" for every trial:
 # 1. score_phon: Did they find the Phonological error?
@@ -568,7 +298,7 @@ run_paired_power <- function(data, cond1_name, cond2_name, metric1, metric2, lab
   sd_diff <- sd(paired_data$diff)
   
   if (is.na(sd_diff) || sd_diff == 0) {
-    effect_d <- 0.5 # Default fallback
+    effect_d <- 0.5 
     note <- " (Defaulted due to 0 variance)"
   } else {
     effect_d <- mean_diff / sd_diff
@@ -646,10 +376,11 @@ run_plotting_pipeline <- function(df_input) {
         err_reported_clean == "y"    ~ "Question needs correction"
       ),
       attempt_label = case_when(
-        err_reported_attempt == "first" ~ "First Attempt",
-        err_reported_attempt == "secsame" ~ "Second Attempt (Same/Skip)",
-        err_reported_attempt == "secdiff" ~ "Second Attempt (Changed)",
-        TRUE ~ err_reported_attempt
+      # fuzzy match in case there are typos
+      agrepl("first", err_reported_attempt, max.distance = 1) ~ "First Attempt",
+      agrepl("secsame", err_reported_attempt, max.distance = 2) ~ "Second Attempt (Same/Skip)",
+      agrepl("secdiff", err_reported_attempt, max.distance = 2) ~ "Second Attempt (Changed)",
+      TRUE ~ err_reported_attempt
       ),
       accuracy_label = case_when(
         no_err_response == "a" ~ "Accurate",
@@ -817,3 +548,430 @@ run_plotting_pipeline(df_clean_all_trials)
 ```
 
 
+
+### 2. Transcription data analysis
+
+```{r transcription-data-cleaning-pipeline, message=FALSE, warning=FALSE, echo=FALSE}
+
+ 
+#### helper functions & batch processing ####
+
+# clean special characters
+mgsub <- function(pattern, replacement, x, ...) {
+  result <- x
+  for (i in 1:length(pattern)) {
+    result <- gsub(pattern[i], replacement[i], result, ...)
+  }
+  result
+}
+
+# scoring keywords
+num.keywords.correct <- function(transcription, keywords) {
+  keys <- gsub("[[:punct:]]", "", tolower(as.character(keywords)))
+  trans <- gsub("[[:punct:]]", "", tolower(as.character(transcription)))
+  return(sum(!is.na(pmatch(unlist(strsplit(keys, " ")), unlist(strsplit(trans, " "))))))
+}
+
+# check individual keywords
+check_keywords_correct <- function(transcription, keywords, global_row_id, filename, participant_id) {
+  keys <- gsub("[[:punct:]]", "", tolower(as.character(keywords)))
+  trans <- gsub("[[:punct:]]", "", tolower(as.character(transcription)))
+  keys.list <- unlist(strsplit(keys, " "))
+  trans.list <- unlist(strsplit(trans, " "))
+  
+  correct_matches <- keys.list %in% trans.list
+  
+  return(data.frame(
+    global_row_id = global_row_id, 
+    participant_id = participant_id,
+    Filename = filename,
+    keyword = keys.list,
+    is_correct = correct_matches
+  ))
+}
+
+# clean questionnaire data
+clean_questionnaire_robust <- function(file_path) {
+  d <- read_csv(file_path, show_col_types = FALSE) 
+  if(!all(c("stimuli_presented", "response_value") %in% names(d))) return(NULL)
+  
+  d %>%
+    filter(stimuli_presented %in% c("exposure_spanish_accent", "exposure_spanish")) %>%
+    select(participant_id, question_id = stimuli_presented, answer = response_value) %>%
+    distinct() %>%
+    pivot_wider(names_from = question_id, values_from = answer) %>%
+    rename_with(~ paste0("quest_", .), .cols = -participant_id)
+}
+
+# batch processing function
+
+process_transcription_batch <- function(folder_name, group_label, batch_label, has_questionnaire) {
+  
+  message(paste("Processing Batch:", batch_label, "..."))
+  target_folder <- file.path("../data/preprocessed", folder_name)
+  
+  trans_files <- list.files(target_folder, pattern = "transcription_data.csv", full.names = TRUE, recursive = TRUE)
+  if(length(trans_files) == 0) { warning(paste("  ! No data found for", batch_label)); return(NULL) }
+  
+  d_combined <- map_dfr(trans_files, function(f_path) {
+    temp_d <- read_csv(f_path, show_col_types = FALSE) %>% mutate(across(everything(), as.character))
+    fname <- basename(f_path)
+    temp_d$run_type <- ifelse(str_starts(fname, "test_run"), "Test Run", "Official")
+    return(temp_d)
+  })
+  
+  key_file <- "../data/transcription_scoring.txt"
+  if(!file.exists(key_file)) { warning("Key file missing"); return(NULL) }
+  key.df <- read.delim(key_file, header = TRUE, sep = ",")
+  key.df$Sentence <- as.character(key.df$Sentence)
+  
+  d.trans <- d_combined %>%
+    filter(!is.na(stimulus_files_presented) & stimulus_files_presented != "" & block == "Transcription")
+  d.trans$Filename <- basename(as.character(d.trans$stimulus_files_presented))
+  d.trans$Transcription <- d.trans$response_value
+  
+  d.all.m <- merge(d.trans, subset(key.df, select = -c(SentenceSet)),
+                   by.x = "Filename", by.y = "Sentence", sort = FALSE)
+  
+  if(nrow(d.all.m) == 0) { warning(paste("  ! Merge failed for", batch_label)); return(NULL) }
+  
+  d.all.m <- within(d.all.m, {
+    Transcription <- tolower(mgsub(c("&lt&", "&gt&", "&quot&", "&comma&", "&semicol&", "&pipe&", "&apos&"), 
+                                   c("<", ">", '"', ",", ";", "|", "'"), Transcription))
+    NumKeywordsCorrect <- mapply(num.keywords.correct, Transcription, Keywords)
+    PropKeywordsCorrect <- NumKeywordsCorrect / as.numeric(NumKeywords)
+  })
+  
+  d.all.m$quest_exposure_spanish_accent <- NA_character_
+  if(has_questionnaire) {
+    q_files <- list.files(target_folder, pattern = "questionnaire_data.csv", full.names = TRUE, recursive = TRUE)
+    if(length(q_files) > 0) {
+      df_quest_all <- map_dfr(q_files, clean_questionnaire_robust) %>% group_by(participant_id) %>% slice(1) %>% ungroup()
+      d.all.m <- left_join(d.all.m, df_quest_all, by = "participant_id")
+      if("quest_exposure_spanish_accent.y" %in% names(d.all.m)) {
+        d.all.m$quest_exposure_spanish_accent <- d.all.m$quest_exposure_spanish_accent.y
+        d.all.m$quest_exposure_spanish_accent.x <- NULL; d.all.m$quest_exposure_spanish_accent.y <- NULL
+      }
+    }
+  }
+  
+  d.all.m$batch_id <- batch_label
+  d.all.m$group <- group_label
+  return(d.all.m)
+}
+
+# filtering participants
+# we keep only those who passed attention checks in the error detection task
+
+batch_manifest <- tribble(
+  ~folder_name,          ~group_label, ~batch_label,      ~has_questionnaire,
+  "transcrip_baseline",  "baseline",   "Baseline",        TRUE,
+  "main_batch3",         "main",       "Main Batch 3",    TRUE
+)
+
+df_transcription_raw <- pmap_dfr(batch_manifest, process_transcription_batch)
+
+
+if(exists("df_clean_all_trials")) {
+  eligible_ids <- unique(df_clean_all_trials$participant_id)
+} else {
+  eligible_ids <- unique(df_transcription_raw$participant_id)
+}
+
+df_transcription_all <- df_transcription_raw %>%
+  filter(batch_id == "Baseline" | participant_id %in% eligible_ids) %>%
+  filter(participant_id != "6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765") %>%
+  group_by(participant_id) %>%
+  mutate(trial_order = row_number()) %>%
+  ungroup()
+
+print(df_transcription_all %>% group_by(batch_id) %>% summarise(N = n_distinct(participant_id)))
+
+
+
+##### core plots #####
+run_lean_plots <- function(df_input) {
+  
+  
+
+  # trial-by-trial change
+  summ_time <- df_input %>% 
+    group_by(trial_order, batch_id) %>% 
+    summarise(stats = list(smean.cl.boot(PropKeywordsCorrect)), .groups="drop") %>% 
+    tidyr::unnest_wider(stats)
+  
+  p_learning <- ggplot(summ_time, aes(x = trial_order, y = Mean, color = batch_id, fill = batch_id)) +
+    geom_ribbon(aes(ymin = Lower, ymax = Upper), alpha = 0.2, linetype = 0) +
+    geom_line(linetype = "dashed", alpha = 0.8) +
+    geom_smooth(data = df_input, aes(y = PropKeywordsCorrect), method = "lm", se = FALSE, size = 1) +
+    scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+    scale_color_brewer(palette = "Set1") + scale_fill_brewer(palette = "Set1") +
+    labs(
+      title = "P1: Learning Trajectory (Adaptation Rate)",
+      subtitle = "Solid Line = Linear Fit | Ribbon = 95% Bootstrapped CI",
+      x = "Trial Number", y = "Accuracy"
+    ) + theme_bw() + theme(legend.position = "top")
+
+
+  # main adaptation effect: Did the Experimental group perform better overall?
+  
+  summ_group <- df_input %>% 
+    group_by(batch_id) %>% 
+    summarise(
+      stats = list(smean.cl.boot(PropKeywordsCorrect)), 
+      .groups="drop"
+    ) %>% 
+    tidyr::unnest_wider(stats)
+  
+  p_comparison <- ggplot(summ_group, aes(x = batch_id, y = Mean, color = batch_id)) +
+    geom_jitter(data = df_input %>% group_by(batch_id, participant_id) %>% summarise(M=mean(PropKeywordsCorrect, na.rm=TRUE), .groups="drop"), 
+                aes(y = M), width = 0.15, alpha = 0.2, size = 1.5, color = "gray50") +
+    geom_errorbar(aes(ymin = Lower, ymax = Upper), width = 0.15, size = 1.2) +
+    geom_point(size = 5, shape = 19) +
+    geom_text(aes(label = scales::percent(Mean, accuracy = 0.1)), 
+              hjust = -0.4, fontface = "bold", size = 4) +
+    scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+    scale_color_brewer(palette = "Set1") +
+    labs(
+      title = "P2: Adaptation Effect (Group Comparison)", 
+      subtitle = "Dot = Mean | Error Bar = 95% Confidence Interval",
+      y = "Mean Accuracy",
+      x = NULL
+    ) + 
+    theme_bw() + theme(legend.position="none")
+
+
+  # error analysis:hardest keywords
+  df_input <- df_input %>% mutate(global_row_id = row_number())
+  kw_df <- pmap_dfr(list(df_input$Transcription, df_input$Keywords, df_input$global_row_id, df_input$Filename, df_input$participant_id), check_keywords_correct)
+  kw_df <- kw_df %>% left_join(df_input %>% select(global_row_id, batch_id), by="global_row_id")
+  
+  hardest <- kw_df %>% group_by(keyword, batch_id) %>% summarise(P = mean(is_correct, na.rm=TRUE), .groups="drop") %>% 
+    group_by(batch_id) %>% arrange(P) %>% slice_head(n=10)
+  
+  p_error <- ggplot(hardest, aes(x = reorder(keyword, P), y = P, fill = batch_id)) +
+    geom_col(position = "dodge", color = "black", alpha = 0.8) +
+    facet_wrap(~batch_id, scales = "free_y") + coord_flip() +
+    scale_fill_brewer(palette = "Set1") +
+    labs(title = "P3: Hardest Keywords", x = NULL, y = "Proportion Correct") +
+    theme_bw() + theme(legend.position = "none")
+
+  print(p_learning)
+  print(p_comparison)
+  print(p_error)
+
+}
+
+
+run_lean_plots(df_transcription_all)
+
+
+##### hardest keywords table #####
+get_hardest_keywords_table <- function(df_input, top_n = 15) {
+  
+  
+  df_input <- df_input %>% mutate(global_row_id = row_number())
+  
+  kw_df <- pmap_dfr(
+    list(df_input$Transcription, df_input$Keywords, df_input$global_row_id, df_input$Filename, df_input$participant_id),
+    check_keywords_correct 
+  )
+  
+  kw_df <- kw_df %>% 
+    left_join(df_input %>% select(global_row_id, batch_id), by="global_row_id")
+  
+  hardest_table <- kw_df %>% 
+    group_by(batch_id, keyword) %>% 
+    summarise(
+      Total_Attempts = n(),
+      Count_Correct = sum(is_correct, na.rm=TRUE),
+      Prop_Correct_Raw = mean(is_correct, na.rm=TRUE),
+      .groups = "drop") %>% 
+    arrange(batch_id, Prop_Correct_Raw) %>% 
+    
+    group_by(batch_id) %>% 
+    slice_head(n = top_n) %>% 
+    mutate(
+      Accuracy = scales::percent(Prop_Correct_Raw, accuracy = 0.1)
+    ) %>% 
+    select(Batch = batch_id, Keyword = keyword, Accuracy, Correct = Count_Correct, Total = Total_Attempts)
+  
+  return(hardest_table)
+}
+
+
+hardest_keywords <- get_hardest_keywords_table(df_transcription_all, top_n = 15)
+# Batch: Which group the data comes from (Baseline vs Main).
+# Keyword: The specific word being transcribed.
+# Accuracy: The % of times participants transcribed this word correctly.
+# Correct / Total: The raw counts (e.g., if 2 people got it right out of 24, accuracy is 8.3%).
+print(hardest_keywords, n = Inf)
+
+##### backup/supplementary plots #####
+
+
+run_appendix_plots <- function(df_input) {
+  
+  df_input <- df_input %>% mutate(global_row_id = row_number())
+  
+  keyword_long_df <- pmap_dfr(
+    list(df_input$Transcription, df_input$Keywords, df_input$global_row_id, df_input$Filename, df_input$participant_id),
+    check_keywords_correct 
+  )
+
+  keyword_long_df <- keyword_long_df %>% 
+    left_join(df_input %>% select(global_row_id, batch_id), by="global_row_id")
+
+ 
+# sentence difficulty (item analysis)
+  item_means <- df_input %>% 
+    group_by(Filename, batch_id) %>% 
+    summarise(Mean = mean(PropKeywordsCorrect, na.rm=TRUE), .groups="drop") %>%
+    mutate(File_Clean = gsub(".wav", "", Filename))
+  
+  p_sentences <- ggplot(item_means, aes(x = Mean, y = reorder(File_Clean, Mean))) +
+    geom_point(aes(color = Mean), size = 3) + 
+    facet_wrap(~batch_id, scales="free_x") +
+    scale_color_gradient(low = "red", high = "green") +
+    labs(
+      title = "Appendix A: Sentence Difficulty Ranking", 
+      subtitle = "Red = Hardest Sentences | Green = Easiest Sentences",
+      x = "Mean Proportion Correct", y = NULL
+    ) + theme( legend.position="none")
+
+ # individual participant trends
+  p_individual <- ggplot(df_input, aes(x = trial_order, y = PropKeywordsCorrect, group = participant_id, color = batch_id)) +
+    geom_line(alpha = 0.2, linewidth = 0.5) + 
+    geom_smooth(aes(group = batch_id), method = "lm", se = FALSE, size = 1.5, color = "black") +
+    facet_wrap(~batch_id) +
+    scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+    labs(
+      title = "Appendix B: Individual Learning Trajectories",
+      subtitle = "Faint Lines = Individuals | Black Line = Group Trend",
+      x = "Trial Number", y = "Accuracy"
+    ) + theme(legend.position="none")
+
+  # role of familiarity
+  p_fam <- NULL
+  if("quest_exposure_spanish_accent" %in% names(df_input)) {
+    df_fam <- df_input %>%
+      filter(!is.na(quest_exposure_spanish_accent)) %>%
+      mutate(clean_exposure = case_when(
+          quest_exposure_spanish_accent == "Not at all" ~ "1",
+          quest_exposure_spanish_accent == "Sometimes" ~ "2",
+          quest_exposure_spanish_accent == "Half the time" ~ "3",
+          quest_exposure_spanish_accent == "Often" ~ "4",
+          quest_exposure_spanish_accent %in% c("Always", "All the time") ~ "5",
+          str_detect(quest_exposure_spanish_accent, "^[1-5]$") ~ quest_exposure_spanish_accent,
+          TRUE ~ NA_character_
+      )) %>% filter(!is.na(clean_exposure))
+    
+    if(nrow(df_fam) > 0) {
+       df_fam <- df_fam %>%
+        mutate(fam = factor(as.numeric(clean_exposure), levels=1:5, labels=c("Never", "Sometimes", "Half", "Often", "Always"))) %>%
+        group_by(participant_id, group, fam) %>% summarise(M = mean(PropKeywordsCorrect, na.rm=TRUE), .groups="drop")
+      
+      p_fam <- ggplot(df_fam, aes(x = fam, y = M, fill=group)) +
+        geom_boxplot(alpha=0.4, outlier.shape = NA) + geom_jitter(width = 0.1, alpha = 0.5) +
+        labs(title = "Appendix C: Does Prior Exposure Predict Accuracy?", x = "Exposure Frequency", y = "Mean Accuracy") + 
+        theme(legend.position = "top")
+    }
+  }
+
+ 
+  # detailed keywords accuracy
+  keyword_acc <- keyword_long_df %>% 
+    group_by(Filename, keyword, batch_id) %>% 
+    summarise(P = mean(is_correct, na.rm=TRUE), .groups="drop")
+  
+  p_keywords <- ggplot(keyword_acc, aes(x = reorder(keyword, P), y = P, fill = batch_id)) +
+    geom_col(position = "dodge", color="black", width=0.7) + 
+    facet_wrap(~ Filename, scales = "free") + # Facet by Sentence File
+    scale_y_continuous(labels = scales::percent) +
+    labs(
+      title = "Appendix D: Detailed Keyword Accuracy", 
+      subtitle = "Breakdown of every keyword in every sentence",
+      x = "Keyword", y = "Accuracy"
+    ) + 
+    theme(
+      axis.text.x = element_text(angle = 45, vjust = 0.5), 
+      legend.position="top"
+    )
+  
+  print(p_sentences)
+  print(p_individual)
+  if(!is.null(p_fam)) print(p_fam)
+  print(p_keywords)
+
+}
+
+
+run_appendix_plots(df_transcription_all)
+
+
+##### power analysis #####
+
+
+# calculate overall mean accuracy per participant
+
+df_accuracy_prep <- df_transcription_all %>%
+  group_by(participant_id, batch_id) %>%
+  summarise(
+    Mean_Acc = mean(PropKeywordsCorrect, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# power function (mean accuracy)
+run_accuracy_power <- function(data, group_exp_name, group_ctrl_name) {
+  
+  acc_exp  <- data %>% filter(batch_id == group_exp_name) %>% pull(Mean_Acc)
+  acc_ctrl <- data %>% filter(batch_id == group_ctrl_name) %>% pull(Mean_Acc)
+  
+  if(length(acc_exp) < 2 || length(acc_ctrl) < 2) {
+    message("Insufficient data."); return(NULL)
+  }
+
+  # effect size
+  mean_exp <- mean(acc_exp); mean_ctrl <- mean(acc_ctrl)
+  mean_diff <- mean_exp - mean_ctrl
+  
+  pooled_sd <- sqrt( ((length(acc_exp)-1)*var(acc_exp) + (length(acc_ctrl)-1)*var(acc_ctrl)) / 
+                       (length(acc_exp) + length(acc_ctrl) - 2) )
+  
+  d_val <- mean_diff / pooled_sd
+  
+  # results
+  message(paste0("\n--- Power Analysis: ", group_exp_name, " vs. ", group_ctrl_name, " ---"))
+  message(paste("Mean Accuracy (Exp): ", scales::percent(mean_exp, accuracy=0.1)))
+  message(paste("Mean Accuracy (Ctrl):", scales::percent(mean_ctrl, accuracy=0.1)))
+  message(paste("Effect Size (d):     ", round(d_val, 3)))
+  
+  if(d_val < 0.1) {
+    message("WARNING: Effect size is tiny or negative. (Exp is not better than Ctrl)")
+    message("Cannot calculate N based on observed data.")
+  } else {
+    pwr_res <- pwr.t.test(d = d_val, power = 0.80, sig.level = 0.05, 
+                          type = "two.sample", alternative = "greater")
+    print(pwr_res)
+  }
+}
+
+
+# run power analysis
+# Main Batch 1 vs Baseline
+run_accuracy_power(df_accuracy_prep, "Main Batch 1", "Baseline")
+
+# Main Batch 3 vs Baseline
+run_accuracy_power(df_accuracy_prep, "Main Batch 3", "Baseline")
+
+# visualization
+ggplot(df_accuracy_prep, aes(x = batch_id, y = Mean_Acc, fill = batch_id)) +
+  geom_boxplot(alpha = 0.5, outlier.shape = NA) +
+  geom_jitter(width = 0.2, alpha = 0.6) +
+  labs(
+    title = "Overall Transcription Accuracy", 
+    subtitle = "Aggregated performance across all trials",
+    y = "Mean % Correct"
+  ) +
+  theme_bw()
+```
