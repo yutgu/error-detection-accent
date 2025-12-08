@@ -90,6 +90,8 @@ library(Hmisc)
 
 # power analysis
 library(pwr)
+
+library(scales)
 ```
 
 
@@ -101,13 +103,13 @@ dodge_amt2 <- 0.5
 
 # set the theme for graphs 
 theme_set(
-  theme_minimal(base_size = 14) +  
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 14),
-    axis.text.y = element_text(size = 14),
-    axis.title = element_text(size = 14, face = "bold"),
+  theme_minimal(base_size = 12) +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 12),
+    axis.title = element_text(size = 12, face = "bold"),
     plot.title = element_text(face = "bold", size = 14),
-    legend.title = element_text(face = "bold", size = 14),
-    legend.text = element_text(size = 14),
+    legend.title = element_text(face = "bold", size = 12),
+    legend.text = element_text(size = 12),
     legend.position = "top",
     strip.text = element_text(size = 12, face = "bold")))
   # panel.background = element_rect(fill = "transparent")))
@@ -149,7 +151,7 @@ process_batch_error_detection <- function(batch_pattern, batch_label, folder_nam
  # find annotated files
   annotated_files <- list.files(
     path = "../data/annotated/", 
-    pattern = paste0(batch_pattern, ".*(FB|JB)\\.csv"), 
+    pattern = paste0(batch_pattern, ".*(FB|JB|HH)\\.csv"), 
     full.names = TRUE
   )
   
@@ -168,7 +170,8 @@ process_batch_error_detection <- function(batch_pattern, batch_label, folder_nam
   }
 
   
-  df_exp <- map_dfr(annotated_files, read_csv, show_col_types = FALSE) %>% distinct()
+  df_exp <- map_dfr(annotated_files, read_csv, col_types = cols(.default = "c"), show_col_types = FALSE) %>% 
+    distinct()
   
   # filter participants who did not engage with the experiment
   # this means that there will be no coder names
@@ -266,85 +269,85 @@ df_analysis_targets <- df_clean_all_trials %>%
 # 1. score_phon: Did they find the Phonological error?
 # 2. score_nonphon: Did they find the Non-Phonological error?
 
-df_power_prep <- df_analysis_targets %>%
-  mutate(
-    score_phon = case_when(
-      err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both") ~ 1,
-      TRUE ~ 0
-    ),
-    score_nonphon = case_when(
-      err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both") ~ 1,
-      TRUE ~ 0
-    )
-  )
-
-
-run_paired_power <- function(data, cond1_name, cond2_name, metric1, metric2, label) {
-  
-  d1 <- data %>% filter(condition == cond1_name) %>% select(participant_id, val = all_of(metric1))
-  d2 <- data %>% filter(condition == cond2_name) %>% select(participant_id, val = all_of(metric2))
-  
-  paired_data <- inner_join(d1, d2, by = "participant_id", suffix = c("_c1", "_c2")) %>%
-    group_by(participant_id) %>%
-    summarise(
-      mean_c1 = mean(val_c1),
-      mean_c2 = mean(val_c2),
-      .groups = "drop"
-    ) %>%
-    mutate(diff = mean_c1 - mean_c2)
-  
-  # calculate effect size
-  mean_diff <- mean(paired_data$diff)
-  sd_diff <- sd(paired_data$diff)
-  
-  if (is.na(sd_diff) || sd_diff == 0) {
-    effect_d <- 0.5 
-    note <- " (Defaulted due to 0 variance)"
-  } else {
-    effect_d <- mean_diff / sd_diff
-    note <- ""
-  }
-  
-
-  pwr_out <- pwr.t.test(
-    d = abs(effect_d), 
-    power = 0.80, 
-    sig.level = 0.05, 
-    type = "paired", 
-    alternative = "two.sided"
-  )
-  
-  return(tibble(
-    Hypothesis = label,
-    Condition_A = cond1_name,
-    Condition_B = cond2_name,
-    Effect_Size_d = round(effect_d, 3),
-    Required_N = ceiling(pwr_out$n),
-    Note = note
-  ))
-}
-
-
-# Analysis 1: Does adding Non-Phon mask Phon?
-# compare Phon detection in 'phon_err' vs 'both_err'
-res1 <- run_paired_power(df_power_prep, "phon_err", "both_err", "score_phon", "score_phon", "1. Phon Interference")
-
-# Analysis 2: Does adding Phon mask Non-Phon?
-# compare Non-Phon detection in 'non_phon_err' vs 'both_err'
-res2 <- run_paired_power(df_power_prep, "non_phon_err", "both_err", "score_nonphon", "score_nonphon", "2. Non-Phon Interference")
-
-# Analysis 3: Is Phon easier to spot than Non-Phon?
-# compare Phon detection in 'phon_err' vs Non-Phon detection in 'non_phon_err'
-res3 <- run_paired_power(df_power_prep, "phon_err", "non_phon_err", "score_phon", "score_nonphon", "3. Relative Salience")
-
-
-
-final_table <- bind_rows(res1, res2, res3)
-
-print(final_table)
-
-max_n <- max(final_table$Required_N)
-safe_n <- max_n + 5 
+# df_power_prep <- df_analysis_targets %>%
+#   mutate(
+#     score_phon = case_when(
+#       err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both") ~ 1,
+#       TRUE ~ 0
+#     ),
+#     score_nonphon = case_when(
+#       err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both") ~ 1,
+#       TRUE ~ 0
+#     )
+#   )
+# 
+# 
+# run_paired_power <- function(data, cond1_name, cond2_name, metric1, metric2, label) {
+#   
+#   d1 <- data %>% filter(condition == cond1_name) %>% select(participant_id, val = all_of(metric1))
+#   d2 <- data %>% filter(condition == cond2_name) %>% select(participant_id, val = all_of(metric2))
+#   
+#   paired_data <- inner_join(d1, d2, by = "participant_id", suffix = c("_c1", "_c2")) %>%
+#     group_by(participant_id) %>%
+#     summarise(
+#       mean_c1 = mean(val_c1),
+#       mean_c2 = mean(val_c2),
+#       .groups = "drop"
+#     ) %>%
+#     mutate(diff = mean_c1 - mean_c2)
+#   
+#   # calculate effect size
+#   mean_diff <- mean(paired_data$diff)
+#   sd_diff <- sd(paired_data$diff)
+#   
+#   if (is.na(sd_diff) || sd_diff == 0) {
+#     effect_d <- 0.5 
+#     note <- " (Defaulted due to 0 variance)"
+#   } else {
+#     effect_d <- mean_diff / sd_diff
+#     note <- ""
+#   }
+#   
+# 
+#   pwr_out <- pwr.t.test(
+#     d = abs(effect_d), 
+#     power = 0.80, 
+#     sig.level = 0.05, 
+#     type = "paired", 
+#     alternative = "two.sided"
+#   )
+#   
+#   return(tibble(
+#     Hypothesis = label,
+#     Condition_A = cond1_name,
+#     Condition_B = cond2_name,
+#     Effect_Size_d = round(effect_d, 3),
+#     Required_N = ceiling(pwr_out$n),
+#     Note = note
+#   ))
+# }
+# 
+# 
+# # Analysis 1: Does adding Non-Phon mask Phon?
+# # compare Phon detection in 'phon_err' vs 'both_err'
+# res1 <- run_paired_power(df_power_prep, "phon_err", "both_err", "score_phon", "score_phon", "1. Phon Interference")
+# 
+# # Analysis 2: Does adding Phon mask Non-Phon?
+# # compare Non-Phon detection in 'non_phon_err' vs 'both_err'
+# res2 <- run_paired_power(df_power_prep, "non_phon_err", "both_err", "score_nonphon", "score_nonphon", "2. Non-Phon Interference")
+# 
+# # Analysis 3: Is Phon easier to spot than Non-Phon?
+# # compare Phon detection in 'phon_err' vs Non-Phon detection in 'non_phon_err'
+# res3 <- run_paired_power(df_power_prep, "phon_err", "non_phon_err", "score_phon", "score_nonphon", "3. Relative Salience")
+# 
+# 
+# 
+# final_table <- bind_rows(res1, res2, res3)
+# 
+# print(final_table)
+# 
+# max_n <- max(final_table$Required_N)
+# safe_n <- max_n + 5 
 
 # An a priori power analysis based on data from the test run where the randomization worked correctly (N=3). For the primary hypothesis (Phonological Interference: Does the presence of a second error (Non-Phonological) make it harder for the participant to spot the Phonological error?), it suggested that a sample size of N=26 would be sufficient to achieve 80% power at alpha=.05. If we account for participant exclusion rates and we want to improve sensitivity for secondary and other hypotheses, we could set a target sample size of N=40 
 ```
@@ -354,8 +357,40 @@ safe_n <- max_n + 5
 
 ```{r error-detection-functions-to-create-plots, message=FALSE, warning=FALSE, echo=FALSE}
 
-
 run_plotting_pipeline <- function(df_input) {
+  
+
+  condition_colors <- c(
+    "phon_err"     = "lightsalmon",
+    "non_phon_err" = "skyblue",
+    "both_err"     = "plum3", 
+    "correct"      = "palegreen3"
+  )
+  
+  feature_colors <- c(
+    "phon"    = "lightsalmon",
+    "nonphon" = "skyblue"
+  )
+  
+  fa_color <- "wheat3"
+  
+
+  
+  error_type_labels <- c(
+    "p"          = "Phonological (Intended)",
+    "p?"         = "Phonological (Uncertain)",
+    "np"         = "Non-Phon (Intended)",
+    "np?"        = "Non-Phon (Uncertain)",
+    "both"       = "Both Intended Errors",
+    "acheckp"    = "Attn Check (Pass)",
+    "acheckf"    = "Attn Check (Fail)",
+    "otherp"     = "Other Phon (Irrelevant)",
+    "othernp"    = "Other Non-Phon (Irrelevant)",
+    "otherfill"  = "Reported Filler Error",
+    "otherirr"   = "Other Irrelevant (Style/Conciseness)",
+    "otherwrong" = "Wrong Selection/Typo",
+    "other"      = "Other (Misc)"
+  )
   
   df_input <- df_input %>%
     group_by(participant_id) %>%
@@ -376,11 +411,10 @@ run_plotting_pipeline <- function(df_input) {
         err_reported_clean == "y"    ~ "Question needs correction"
       ),
       attempt_label = case_when(
-      # fuzzy match in case there are typos
-      agrepl("first", err_reported_attempt, max.distance = 1) ~ "First Attempt",
-      agrepl("secsame", err_reported_attempt, max.distance = 2) ~ "Second Attempt (Same/Skip)",
-      agrepl("secdiff", err_reported_attempt, max.distance = 2) ~ "Second Attempt (Changed)",
-      TRUE ~ err_reported_attempt
+        agrepl("first", err_reported_attempt, max.distance = 1) ~ "First Attempt",
+        agrepl("secsame", err_reported_attempt, max.distance = 2) ~ "Second Attempt (Same/Skip)",
+        agrepl("secdiff", err_reported_attempt, max.distance = 2) ~ "Second Attempt (Changed)",
+        TRUE ~ err_reported_attempt
       ),
       accuracy_label = case_when(
         no_err_response == "a" ~ "Accurate",
@@ -388,7 +422,7 @@ run_plotting_pipeline <- function(df_input) {
         no_err_response == "blank" ~ "Blank",
         no_err_response == "corrected" ~ "Corrected",
         no_err_response == "twice" ~ "Same Response Twice",
-        TRUE ~ no_err_response
+        TRUE ~ "Other"
       ),
       quest_exposure_spanish_accent = factor(
         as.numeric(quest_exposure_spanish_accent), 
@@ -398,8 +432,7 @@ run_plotting_pipeline <- function(df_input) {
       )
     ) %>%
     filter(err_reported_clean %in% c("y", "nans", "nun"))
-
-
+  
   df_trial_level <- df_analysis %>%
     group_by(participant_id, question, condition) %>%
     summarise(
@@ -416,14 +449,17 @@ run_plotting_pipeline <- function(df_input) {
       .groups = "drop"
     )
   
+
+  
   # (A) Was there error reported?
+  # They ARE reporting errors
   plot_data_A_part <- df_trial_level %>%
     count(participant_id, condition, final_label) %>%
     complete(participant_id, condition, final_label, fill = list(n = 0)) %>%
     group_by(participant_id, condition) %>%
     mutate(Total = sum(n), Prop = n / Total) %>%
     ungroup()
-
+  
   plot_summary_err_reported <- plot_data_A_part %>%
     group_by(condition, final_label) %>%
     summarise(
@@ -433,112 +469,212 @@ run_plotting_pipeline <- function(df_input) {
     ) %>%
     mutate(ymin = Mean_Proportion - SE, ymax = Mean_Proportion + SE) %>%
     rename(err_reported_label = final_label)
-
-  p_grouped_chart_err_reported <- ggplot(plot_summary_err_reported, 
-                                         aes(x = condition, y = Mean_Proportion, fill = err_reported_label, ymin = ymin, ymax = ymax)) +
+  
+  pA <- ggplot(plot_summary_err_reported, 
+               aes(x = condition, y = Mean_Proportion, fill = err_reported_label, ymin = ymin, ymax = ymax)) +
     geom_bar(stat = "identity", position = position_dodge(width = 0.9), color = "black") +
     geom_errorbar(position = position_dodge(width = 0.9), width = 0.25, color = "black") +
     scale_fill_brewer(palette = "Set3") + 
     scale_y_continuous(labels = scales::percent) +
-    labs(x = "Condition", y = "Proportion of Responses", fill = "Participant Response", title = "Did participants report an error?") +
-    theme_bw() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12), legend.position = "top")
-
-
-  # (B) Hit Rate: Detection of Intended Errors
+    labs(x = "Condition", y = "Proportion of Responses", fill = "Participant Response", 
+         title = "Did participants report an error?") 
+  
+  
+  # (B) Hit Rate
+  # Higher detection rate for non-phon errors 
   plot_data_B <- df_trial_level %>%
     filter(condition != "correct") %>%
     group_by(condition) %>%
-    summarise(phon=mean(detected_phon), nonphon=mean(detected_nonphon)) %>%
-    pivot_longer(-condition, names_to="Type", values_to="Rate") %>%
-    filter((condition=="phon_err" & Type=="phon") | (condition=="non_phon_err" & Type=="nonphon") | (condition=="both_err"))
+    summarise(
+      phon_mean = mean(detected_phon),
+      phon_se   = sd(detected_phon) / sqrt(n()),
+      nonphon_mean = mean(detected_nonphon),
+      nonphon_se   = sd(detected_nonphon) / sqrt(n()),
+      .groups = "drop"
+    ) %>%
+    pivot_longer(cols = -condition, 
+                 names_to = c("Type", ".value"), 
+                 names_pattern = "(.*)_(.*)") %>% 
+    filter(
+      (condition == "phon_err" & Type == "phon") |
+      (condition == "non_phon_err" & Type == "nonphon") |
+      (condition == "both_err")
+    )
   
-  pB <- ggplot(plot_data_B, aes(x=condition, y=Rate, fill=Type)) +
-    geom_bar(stat="identity", position="dodge", color="black") +
-    scale_fill_manual(values=c("phon"="skyblue", "nonphon"="salmon")) +
+  pB <- ggplot(plot_data_B, aes(x=condition, y=mean, fill=Type)) +
+    geom_bar(stat="identity", position=position_dodge(0.9), color="black") +
+    geom_errorbar(aes(ymin = mean - se, ymax = mean + se), 
+                  position = position_dodge(0.9), width = 0.25) +
+    scale_fill_manual(values = feature_colors) + 
     scale_y_continuous(labels=percent, limits=c(0,1)) +
-    labs(title="(B) Hit rate: Did participants report the intended error(s)?") + theme_bw()
-
-  # (C) When was the error reported?
-  pC <- ggplot(df_analysis %>% filter(err_reported_clean=="y", !is.na(attempt_label)), 
-               aes(x=condition, fill=attempt_label)) +
-    geom_bar(position="fill", color="black") +
-    scale_fill_brewer(palette="Pastel1") +
-    scale_y_continuous(labels=percent) +
-    labs(title="(C) When did participants report the error?", y="Proportion") + theme_bw()
-
-  # (D) Accuracy of 'No Error' Responses
-  pD <- ggplot(df_analysis %>% filter(err_reported_clean=="nans", !is.na(accuracy_label)), 
+    labs(title="Hit rate: Did participants report the intended error(s)?", 
+         y = "Detection Rate") 
+  
+  
+  # (C) When was the error reported? (By Error Type)
+  #  We group the specific codes into broad categories to see 
+  # if Phonological errors are detected earlier (First Attempt) vs later.
+  
+  plot_data_C <- df_analysis %>% 
+    filter(err_reported_clean == "y", !is.na(attempt_label)) %>%
+    mutate(
+      reported_category = case_when(
+        err_type_response %in% c("p", "p?")   ~ "Phonological",
+        err_type_response %in% c("np", "np?") ~ "Non-Phonological",
+        err_type_response == "both"           ~ "Both Errors",
+        TRUE ~ NA_character_ 
+      )
+    ) %>%
+    filter(!is.na(reported_category)) 
+  
+  pC <- ggplot(plot_data_C, aes(x = reported_category, fill = attempt_label)) +
+    geom_bar(position = "fill", color = "black") +
+    scale_fill_brewer(palette = "Pastel1") +
+    scale_y_continuous(labels = percent) +
+    labs(title = "When are different error types reported?", 
+         subtitle = "Compare 'First Attempt' rates across error types",
+         x = "Reported Error Type",
+         y = "Proportion", 
+         fill = "Attempt") 
+  
+  
+  # (D) Accuracy No Error
+ pD <- ggplot(df_analysis %>% 
+                 filter(err_reported_clean=="nans", 
+                        !is.na(accuracy_label),
+                        accuracy_label != "Other"), 
                aes(x=condition, fill=accuracy_label)) +
     geom_bar(position="fill", color="black") +
     scale_fill_brewer(palette="Paired") +
     scale_y_continuous(labels=percent) +
-    labs(title="(D) Did participants answered the trivia question correctly when NO error was reported?", y="Proportion") + theme_bw()
-
-  # (E) Detailed Error Type Breakdown 
-  pE <- ggplot(df_analysis %>% filter(err_reported_clean=="y") %>% count(condition, err_type_response) %>% group_by(condition) %>% mutate(P=n/sum(n)), 
-               aes(x=err_type_response, y=P, fill=condition)) +
+    labs(title="Accuracy of Trivia Answer when NO error was reported", 
+         y="Proportion")
+  
+  
+  # (E) Detailed Error Breakdown (Split into E1 and E2)
+  data_E <- df_analysis %>% 
+    filter(err_reported_clean=="y") %>%
+    filter(!is.na(err_type_response) & err_type_response != "NA")
+  
+  # E1: Intended Codes Only 
+  pE1 <- ggplot(data_E %>% 
+                  filter(condition != "correct") %>%  
+                  filter(err_type_response %in% c("p","p?","np","np?","both")) %>%
+                  count(condition, err_type_response) %>% 
+                  group_by(condition) %>% mutate(P=n/sum(n)), 
+                aes(x=err_type_response, y=P, fill=condition)) +
     geom_bar(stat="identity", color="black") +
     facet_wrap(~condition, scales="free_x") +
+    scale_fill_manual(values = condition_colors) + 
     scale_y_continuous(labels=percent) +
-    labs(title="(E) Detailed breakdown of reported error types") + theme_bw() + theme(legend.position="none")
-
-  # (F) Detection Over Time 
-  pF <- ggplot(df_trial_level %>% filter(condition %in% c("phon_err", "both_err")), 
+    scale_x_discrete(labels = function(x) str_wrap(error_type_labels[x], width=10)) +
+    labs(title="Detailed Error Breakdown | Intended Errors Only", 
+         x="Code", y="Proportion") + 
+    theme(legend.position="none", axis.text.x = element_text(angle=45, hjust=1))
+  
+  # E2: All Codes
+  pE2 <- ggplot(data_E %>% 
+                  filter(condition != "correct") %>% 
+                  count(condition, err_type_response) %>% 
+                  group_by(condition) %>% mutate(P=n/sum(n)), 
+                aes(x=err_type_response, y=P, fill=condition)) +
+    geom_bar(stat="identity", color="black") +
+    facet_wrap(~condition, scales="free_x") +
+    scale_fill_manual(values = condition_colors) + 
+    scale_y_continuous(labels=percent) +
+    labs(title="Error Breakdown | All Annotated Responses", x="Code", y="Proportion") + 
+    theme(legend.position="none", axis.text.x = element_text(angle=30, hjust=1, vjust=0.5))
+  
+  
+  # (F) Detection Over Time
+  
+  plot_data_F <- df_trial_level %>% filter(condition %in% c("phon_err", "both_err"))
+  
+  pF <- ggplot(plot_data_F, 
                aes(x=trial_num, y=as.integer(detected_phon), color=condition)) +
     geom_point(alpha=0.3, position=position_jitter(height=0.05)) +
     geom_smooth(method="glm", method.args=list(family="binomial")) +
-    labs(title="(F) What did the phonological error detection rate look like over time?") + theme_bw()
-
+    scale_color_manual(values = condition_colors) + 
+    scale_y_continuous(breaks = c(0, 1), labels = c("Miss", "Hit")) +
+    labs(title="Phonological detection over time", y="Detection Probability")
+  
+  
   # (G1) Accent Familiarity x Hit Rate
   plot_data_G <- df_trial_level %>%
     filter(!is.na(quest_exposure_spanish_accent), condition!="correct") %>%
     group_by(quest_exposure_spanish_accent, condition) %>%
-    summarise(phon=mean(detected_phon), nonphon=mean(detected_nonphon), .groups="drop") %>%
+    summarise(
+      phon = mean(detected_phon), 
+      nonphon = mean(detected_nonphon), 
+      .groups="drop"
+    ) %>%
     pivot_longer(c(phon, nonphon), names_to="Type", values_to="Rate") %>%
-    filter((condition=="phon_err"&Type=="phon")|(condition=="non_phon_err"&Type=="nonphon")|(condition=="both_err"))
-
-  pG1 <- ggplot(plot_data_G, aes(x=condition, y=Rate, fill=Type)) +
+    filter((condition=="phon_err" & Type=="phon") | (condition=="non_phon_err" & Type=="nonphon"))
+  
+  pG1 <- ggplot(plot_data_G, aes(x=quest_exposure_spanish_accent, y=Rate, fill=Type)) +
     geom_bar(stat="identity", position="dodge", color="black") +
-    facet_wrap(~quest_exposure_spanish_accent) +
-    scale_fill_manual(values=c("phon"="skyblue", "nonphon"="salmon")) +
-    labs(title="(G1) How did accent ramiliarity affect hit rate?") + theme_bw() + 
+    scale_fill_manual(values = feature_colors) + 
+    scale_y_continuous(labels=percent) +
+    labs(title="Does accent familiarity improve Hit Rate?", 
+         x = "Self-Reported Accent Familiarity", y = "Hit Rate (Detection Rate)") + 
     theme(axis.text.x=element_text(angle=45, hjust=1))
-
-  # (G2) Detection Over Time by Familiarity
-  pG2 <- ggplot(df_trial_level %>% filter(!is.na(quest_exposure_spanish_accent), condition %in% c("phon_err", "both_err")),
+  
+  
+  # (G2) Over Time by Familiarity
+  
+  plot_data_G2 <- df_trial_level %>% 
+    filter(!is.na(quest_exposure_spanish_accent), condition %in% c("phon_err", "both_err"))
+  
+  pG2 <- ggplot(plot_data_G2,
                 aes(x=trial_num, y=as.integer(detected_phon), color=condition)) +
-    geom_point(alpha=0.2) +
+    geom_point(alpha=0.2, position=position_jitter(height=0.05)) +
     geom_smooth(method="glm", method.args=list(family="binomial")) +
+    scale_color_manual(values = condition_colors) + 
     facet_wrap(~quest_exposure_spanish_accent) +
-    labs(title="(G2) How did accent familiarity affect phonological error detection rate over time?") + theme_bw()
-
-  # (H) False Alarms
-  pH <- ggplot(df_trial_level %>% filter(condition=="correct") %>% group_by(participant_id) %>% summarise(Rate=mean(is_reported)), 
-               aes(x=Rate)) +
-    geom_histogram(binwidth=0.05, fill="salmon", color="black") +
-    geom_vline(aes(xintercept=mean(Rate)), color="red", linetype="dashed") +
-    labs(title="(H) What does the false alarm rate look like?") + theme_bw()
-
-  # (I) Interference 
+    scale_y_continuous(breaks=c(0,1), labels=c("Miss","Hit")) +
+    labs(title="Detection over time by Accent Familiarity", 
+         y = "Detection Probability") 
+  
+  # (H) False Alarms 
+  fa_data <- df_trial_level %>% 
+    filter(condition=="correct") %>% 
+    group_by(participant_id) %>% 
+    summarise(Rate=mean(is_reported))
+  
+  pH <- ggplot(fa_data, aes(x=Rate)) +
+    geom_histogram(binwidth=0.05, fill=fa_color, color="black") +
+    geom_vline(aes(xintercept=mean(Rate)), color="red", linetype="dashed", size=1) +
+    scale_x_continuous(labels = percent) +
+    labs(title="Distribution of False Alarm Rates", x="False Alarm Rate", y="Count") 
+  
+  
+  # (I1 & I2) Interference
   pI1 <- ggplot(df_trial_level %>% filter(condition %in% c("phon_err", "both_err")), 
                 aes(x=condition, y=as.integer(detected_phon), fill=condition)) +
     stat_summary(fun="mean", geom="bar", color="black") +
     stat_summary(fun.data="mean_se", geom="errorbar", width=0.2) +
-    labs(title="(I1) Does Non-Phon mask Phon error?") + theme_bw() + theme(legend.position="none")
-
+    scale_fill_manual(values = condition_colors) + 
+    scale_y_continuous(labels = percent, limits = c(0,1)) +
+    labs(title="Does Non-Phon mask Phon error?", y="Phon Detection Rate") + 
+    theme(legend.position="none")
+  
   pI2 <- ggplot(df_trial_level %>% filter(condition %in% c("non_phon_err", "both_err")), 
                 aes(x=condition, y=as.integer(detected_nonphon), fill=condition)) +
     stat_summary(fun="mean", geom="bar", color="black") +
     stat_summary(fun.data="mean_se", geom="errorbar", width=0.2) +
-    labs(title="(I2) Does Phon mask Non-Phon error?") + theme_bw() + theme(legend.position="none")
-
-  print(p_grouped_chart_err_reported)
-  print(pB); print(pC); print(pD); print(pE); 
+    scale_fill_manual(values = condition_colors) + 
+    scale_y_continuous(labels = percent, limits = c(0,1)) +
+    labs(title="Does Phon mask Non-Phon error?", y="Non-Phon Detection Rate") + 
+    theme(legend.position="none")
+  
+  
+  print(pA); print(pB); print(pC); print(pD); 
+  print(pE1); print(pE2);
   print(pF); print(pG1); print(pG2); print(pH); print(pI1); print(pI2)
   
   message("--- Successfully generated all plots! ---")
 }
+
 ```
 
 
@@ -710,7 +846,7 @@ run_lean_plots <- function(df_input) {
       title = "P1: Learning Trajectory (Adaptation Rate)",
       subtitle = "Solid Line = Linear Fit | Ribbon = 95% Bootstrapped CI",
       x = "Trial Number", y = "Accuracy"
-    ) + theme_bw() + theme(legend.position = "top")
+    ) +  theme(legend.position = "top")
 
 
   # main adaptation effect: Did the Experimental group perform better overall?
@@ -738,7 +874,7 @@ run_lean_plots <- function(df_input) {
       y = "Mean Accuracy",
       x = NULL
     ) + 
-    theme_bw() + theme(legend.position="none")
+  theme(legend.position="none")
 
 
   # error analysis:hardest keywords
@@ -754,7 +890,7 @@ run_lean_plots <- function(df_input) {
     facet_wrap(~batch_id, scales = "free_y") + coord_flip() +
     scale_fill_brewer(palette = "Set1") +
     labs(title = "P3: Hardest Keywords", x = NULL, y = "Proportion Correct") +
-    theme_bw() + theme(legend.position = "none")
+    theme(legend.position = "none")
 
   print(p_learning)
   print(p_comparison)
@@ -837,7 +973,7 @@ run_appendix_plots <- function(df_input) {
       title = "Appendix A: Sentence Difficulty Ranking", 
       subtitle = "Red = Hardest Sentences | Green = Easiest Sentences",
       x = "Mean Proportion Correct", y = NULL
-    ) + theme( legend.position="none")
+    ) + theme(legend.position="none")
 
  # individual participant trends
   p_individual <- ggplot(df_input, aes(x = trial_order, y = PropKeywordsCorrect, group = participant_id, color = batch_id)) +
@@ -914,64 +1050,63 @@ run_appendix_plots(df_transcription_all)
 
 # calculate overall mean accuracy per participant
 
-df_accuracy_prep <- df_transcription_all %>%
-  group_by(participant_id, batch_id) %>%
-  summarise(
-    Mean_Acc = mean(PropKeywordsCorrect, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# power function (mean accuracy)
-run_accuracy_power <- function(data, group_exp_name, group_ctrl_name) {
-  
-  acc_exp  <- data %>% filter(batch_id == group_exp_name) %>% pull(Mean_Acc)
-  acc_ctrl <- data %>% filter(batch_id == group_ctrl_name) %>% pull(Mean_Acc)
-  
-  if(length(acc_exp) < 2 || length(acc_ctrl) < 2) {
-    message("Insufficient data."); return(NULL)
-  }
-
-  # effect size
-  mean_exp <- mean(acc_exp); mean_ctrl <- mean(acc_ctrl)
-  mean_diff <- mean_exp - mean_ctrl
-  
-  pooled_sd <- sqrt( ((length(acc_exp)-1)*var(acc_exp) + (length(acc_ctrl)-1)*var(acc_ctrl)) / 
-                       (length(acc_exp) + length(acc_ctrl) - 2) )
-  
-  d_val <- mean_diff / pooled_sd
-  
-  # results
-  message(paste0("\n--- Power Analysis: ", group_exp_name, " vs. ", group_ctrl_name, " ---"))
-  message(paste("Mean Accuracy (Exp): ", scales::percent(mean_exp, accuracy=0.1)))
-  message(paste("Mean Accuracy (Ctrl):", scales::percent(mean_ctrl, accuracy=0.1)))
-  message(paste("Effect Size (d):     ", round(d_val, 3)))
-  
-  if(d_val < 0.1) {
-    message("WARNING: Effect size is tiny or negative. (Exp is not better than Ctrl)")
-    message("Cannot calculate N based on observed data.")
-  } else {
-    pwr_res <- pwr.t.test(d = d_val, power = 0.80, sig.level = 0.05, 
-                          type = "two.sample", alternative = "greater")
-    print(pwr_res)
-  }
-}
-
-
-# run power analysis
-# Main Batch 1 vs Baseline
-run_accuracy_power(df_accuracy_prep, "Main Batch 1", "Baseline")
-
-# Main Batch 3 vs Baseline
-run_accuracy_power(df_accuracy_prep, "Main Batch 3", "Baseline")
-
-# visualization
-ggplot(df_accuracy_prep, aes(x = batch_id, y = Mean_Acc, fill = batch_id)) +
-  geom_boxplot(alpha = 0.5, outlier.shape = NA) +
-  geom_jitter(width = 0.2, alpha = 0.6) +
-  labs(
-    title = "Overall Transcription Accuracy", 
-    subtitle = "Aggregated performance across all trials",
-    y = "Mean % Correct"
-  ) +
-  theme_bw()
+# df_accuracy_prep <- df_transcription_all %>%
+#   group_by(participant_id, batch_id) %>%
+#   summarise(
+#     Mean_Acc = mean(PropKeywordsCorrect, na.rm = TRUE),
+#     .groups = "drop"
+#   )
+# 
+# # power function (mean accuracy)
+# run_accuracy_power <- function(data, group_exp_name, group_ctrl_name) {
+#   
+#   acc_exp  <- data %>% filter(batch_id == group_exp_name) %>% pull(Mean_Acc)
+#   acc_ctrl <- data %>% filter(batch_id == group_ctrl_name) %>% pull(Mean_Acc)
+#   
+#   if(length(acc_exp) < 2 || length(acc_ctrl) < 2) {
+#     message("Insufficient data."); return(NULL)
+#   }
+# 
+#   # effect size
+#   mean_exp <- mean(acc_exp); mean_ctrl <- mean(acc_ctrl)
+#   mean_diff <- mean_exp - mean_ctrl
+#   
+#   pooled_sd <- sqrt( ((length(acc_exp)-1)*var(acc_exp) + (length(acc_ctrl)-1)*var(acc_ctrl)) / 
+#                        (length(acc_exp) + length(acc_ctrl) - 2) )
+#   
+#   d_val <- mean_diff / pooled_sd
+#   
+#   # results
+#   message(paste0("\n--- Power Analysis: ", group_exp_name, " vs. ", group_ctrl_name, " ---"))
+#   message(paste("Mean Accuracy (Exp): ", scales::percent(mean_exp, accuracy=0.1)))
+#   message(paste("Mean Accuracy (Ctrl):", scales::percent(mean_ctrl, accuracy=0.1)))
+#   message(paste("Effect Size (d):     ", round(d_val, 3)))
+#   
+#   if(d_val < 0.1) {
+#     message("WARNING: Effect size is tiny or negative. (Exp is not better than Ctrl)")
+#     message("Cannot calculate N based on observed data.")
+#   } else {
+#     pwr_res <- pwr.t.test(d = d_val, power = 0.80, sig.level = 0.05, 
+#                           type = "two.sample", alternative = "greater")
+#     print(pwr_res)
+#   }
+# }
+# 
+# 
+# # run power analysis
+# # Main Batch 1 vs Baseline
+# run_accuracy_power(df_accuracy_prep, "Main Batch 1", "Baseline")
+# 
+# # Main Batch 3 vs Baseline
+# run_accuracy_power(df_accuracy_prep, "Main Batch 3", "Baseline")
+# 
+# # visualization
+# ggplot(df_accuracy_prep, aes(x = batch_id, y = Mean_Acc, fill = batch_id)) +
+#   geom_boxplot(alpha = 0.5, outlier.shape = NA) +
+#   geom_jitter(width = 0.2, alpha = 0.6) +
+#   labs(
+#     title = "Overall Transcription Accuracy", 
+#     subtitle = "Aggregated performance across all trials",
+#     y = "Mean % Correct"
+#   ) 
 ```
