@@ -26,4 +26,9 @@ analysis/.Rproj.user/
 
 # 7. Globally re-ignore specific files
 .Rhistory
+<<<<<<< HEAD
 .Rproj.user
+=======
+
+analysis/main-analysis.html
+>>>>>>> c7f0bf501bf23dae7de513d0d0c7bd1bb8e54508
