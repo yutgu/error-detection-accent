@@ -1104,7 +1104,7 @@ results <- run_glmer_sdt_analysis(df_clean_all_trials)
 summary(results$model)
 ```
 
-```{r err-detection-glmer-with-signal-detection, message=FALSE, warning=FALSE, echo=FALSE}
+```{r setting-df-ready-for-glmer, message=FALSE, warning=FALSE, echo=FALSE}
 
 ## set up for the dataframe for glmer
 
@@ -1153,21 +1153,20 @@ summary(results$model)
 ##### Bayesian GLMER with Signal Detection Framework
 ```{r err-detection-glmer-with-signal-detection-bayesian, message=FALSE, warning=FALSE, echo=FALSE}
 
-if(!require(blme)) install.packages("blme")
 library(blme)
 
 run_bayesian_glmer_diagnostics <- function(df_input) {
 
   sdt_model_bayes <- bglmer(
     Reported ~ ErrorType * Present_c * OtherTypePresent_c + (1 | participant_id) + (1 | question), 
-    data = df_long, family = binomial,
+    data = df_input, family = binomial,
     fixef.prior = normal, cov.prior = gamma
   )
   
-  return(list(model = sdt_model_bayes, data = df_long))
+  return(list(model = sdt_model_bayes, data = df_input))
 }
 
-final_output <- run_bayesian_glmer_diagnostics(df_clean_all_trials)
+final_output <- run_bayesian_glmer_diagnostics(df_long)
 
 bayes_sdt_model <- final_output$model
 bayes_sdt_data  <- final_output$data
@@ -1175,12 +1174,11 @@ bayes_sdt_data  <- final_output$data
 
 summary(bayes_sdt_model)
 
-
 # checks why non Bayesian one fails
 # very low (almost 0 false alarm rates for the Non-Phon type)
 # diagnostics
 diagnostic_table <- bayes_sdt_data %>%
-  group_by(ErrorType, Present) %>%
+  group_by(ErrorType, Present, OtherTypePresent) %>%
   summarise(
     Total_Trials = n(),
     Reported_Yes = sum(Reported == 1),
@@ -1189,7 +1187,18 @@ diagnostic_table <- bayes_sdt_data %>%
   )
 
 print(diagnostic_table)
+```
 
+```{r err-detection-glmer-with-signal-detection, message=FALSE, warning=FALSE, echo=FALSE}
+
+m1 <- glmer(
+  Reported ~ ErrorType * Present_c + ErrorType * OtherTypePresent_c +
+    (1 | participant_id) + (1 | question),
+  data = df_long %>%
+    filter(!(Present == 0 & OtherTypePresent == 0)),  # drop no-error trials
+  family = binomial
+)
+summary(m1)
 ```
 
 
