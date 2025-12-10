@@ -915,8 +915,6 @@ run_bias_analysis(my_sdt_results)
 
 
 ```{r err-detection-stats-glmer-hit-rates, message=FALSE, warning=FALSE, echo=FALSE}
-
-
 run_stats_pipeline <- function(df_input) {
 
   df_input <- df_input %>%
@@ -1003,6 +1001,185 @@ run_stats_pipeline <- function(df_input) {
 }
 
 run_stats_pipeline(df_clean_all_trials)
+```
+
+
+##### trial-level GLMER
+
+```{r err-detection-glmer-with-signal-detection, message=FALSE, warning=FALSE, echo=FALSE}
+
+
+run_glmer_sdt_analysis <- function(df_input) {
+  
+  df_clean <- df_input %>%
+    filter(stim_type == "target") %>%
+    mutate(
+      err_reported_clean = case_when(
+        err_reported == "nanas" ~ "nans",
+        TRUE ~ err_reported
+      ),
+      condition = factor(condition, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
+    )
+  
+  #  "Hit" status per type per trial 
+  #  first determine if they reported Phon or NonPhon for every trial
+  df_trial_coded <- df_clean %>%
+    mutate(
+      # Did the subject report a Phonological error?
+      reported_phon = if_else(
+        err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0
+      ),
+      
+      # Did the subject report a Non-Phonological error?
+      reported_nonphon = if_else(
+        err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0
+      )
+    )
+
+  # reshape
+  # split every trial into two rows: 
+  # Row A: The "Phonological Perspective"
+  # Row B: The "Non-Phonological Perspective"
+  
+  # Phonological Perspective
+  df_phon_view <- df_trial_coded %>%
+    mutate(
+      ErrorType = "Phon",
+      Reported  = reported_phon, # DV: Did they report Phon?
+      
+      # Is Phon Present in this trial? (Yes for 'phon_err' and 'both_err')
+      Present = if_else(condition %in% c("phon_err", "both_err"), 1, 0),
+      
+      # Is the other type (NonPhon) present? (Yes for 'non_phon_err' and 'both_err')
+      OtherTypePresent = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0)
+    )
+  
+  # Non-Phonological Perspective
+  df_nonphon_view <- df_trial_coded %>%
+    mutate(
+      ErrorType = "NonPhon",
+      Reported  = reported_nonphon, # DV: Did they report NonPhon?
+      
+      # Is NonPhon Present in this trial?
+      Present = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0),
+      
+      # Is the other type (Phon) present?
+      OtherTypePresent = if_else(condition %in% c("phon_err", "both_err"), 1, 0)
+    )
+  
+  # combine both perspectives
+  df_long <- bind_rows(df_phon_view, df_nonphon_view) %>%
+    select(participant_id, question, ErrorType, Reported, Present, OtherTypePresent)
+  
+  
+
+  
+  # 1. ErrorType as Factor with sum coding
+  df_long$ErrorType <- as.factor(df_long$ErrorType)
+  contrasts(df_long$ErrorType) <- contr.sum(2) 
+ # NonPhon: 1; Phon: -1
+  
+  # scale(center=T, scale=T). 
+  df_long$Present_c <- as.numeric(scale(df_long$Present, center = TRUE, scale = TRUE))
+  df_long$OtherTypePresent_c <- as.numeric(scale(df_long$OtherTypePresent, center = TRUE, scale = TRUE))
+
+  
+  sdt_model <- glmer(
+    Reported ~ ErrorType * Present_c * OtherTypePresent_c + 
+      (1 + Present_c | participant_id) + 
+      (1 | question), 
+    data = df_long, 
+    family = binomial,
+    control = glmerControl(optimizer = "bobyqa") 
+  )
+  
+  return(list(data = df_long, model = sdt_model))
+}
+
+
+results <- run_glmer_sdt_analysis(df_clean_all_trials)
+
+summary(results$model)
+```
+
+
+```{r err-detection-glmer-with-signal-detection-bayesian, message=FALSE, warning=FALSE, echo=FALSE}
+
+if(!require(blme)) install.packages("blme")
+library(blme)
+
+run_bayesian_glmer_diagnostics <- function(df_input) {
+  
+  df_clean <- df_input %>%
+    filter(stim_type == "target") %>%
+    mutate(
+      err_reported_clean = case_when(
+        err_reported == "nanas" ~ "nans",
+        TRUE ~ err_reported
+      ),
+      condition = factor(condition, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
+    )
+  
+  df_trial_coded <- df_clean %>%
+    mutate(
+      reported_phon = if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0),
+      reported_nonphon = if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)
+    )
+
+  df_phon_view <- df_trial_coded %>%
+    mutate(ErrorType = "Phon", Reported = reported_phon, 
+           Present = if_else(condition %in% c("phon_err", "both_err"), 1, 0),
+           OtherTypePresent = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0))
+  
+  df_nonphon_view <- df_trial_coded %>%
+    mutate(ErrorType = "NonPhon", Reported = reported_nonphon, 
+           Present = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0),
+           OtherTypePresent = if_else(condition %in% c("phon_err", "both_err"), 1, 0))
+  
+  df_long <- bind_rows(df_phon_view, df_nonphon_view) %>%
+    select(participant_id, question, ErrorType, Reported, Present, OtherTypePresent)
+  
+  # center variables
+  df_long$Present_c <- df_long$Present - 0.5
+  df_long$OtherTypePresent_c <- df_long$OtherTypePresent - 0.5
+  
+  # sum coding
+  df_long$ErrorType <- as.factor(df_long$ErrorType)
+  contrasts(df_long$ErrorType) <- contr.sum(2) 
+  # NonPhon: 1; Phon: -1
+
+  sdt_model_bayes <- bglmer(
+    Reported ~ ErrorType * Present_c * OtherTypePresent_c + (1 | participant_id) + (1 | question), 
+    data = df_long, family = binomial,
+    fixef.prior = normal, cov.prior = gamma
+  )
+  
+  return(list(model = sdt_model_bayes, data = df_long))
+}
+
+final_output <- run_bayesian_glmer_diagnostics(df_clean_all_trials)
+
+my_model <- final_output$model
+my_data  <- final_output$data
+
+bayes_results <- run_bayesian_glmer(df_clean_all_trials)
+summary(bayes_results)
+
+
+# checks why non Bayesian one fails
+# very low (almost 0 false alarm rates for the Non-Phon type)
+# diagnostics
+diagnostic_table <- my_data %>%
+  group_by(ErrorType, Present) %>%
+  summarise(
+    Total_Trials = n(),
+    Reported_Yes = sum(Reported == 1),
+    Reported_No = sum(Reported == 0),
+    Percentage_Yes = round(mean(Reported)*100, 2)
+  )
+
+print(diagnostic_table)
+
 ```
 
 
