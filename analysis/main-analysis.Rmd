@@ -1199,6 +1199,11 @@ m1 <- glmer(
   family = binomial
 )
 summary(m1)
+
+
+sink("model_summary.txt")
+summary(m1)
+sink()
 ```
 
 
