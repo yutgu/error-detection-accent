@@ -1104,15 +1104,11 @@ results <- run_glmer_sdt_analysis(df_clean_all_trials)
 summary(results$model)
 ```
 
-##### Bayesian GLMER with Signal Detection Framework
-```{r err-detection-glmer-with-signal-detection-bayesian, message=FALSE, warning=FALSE, echo=FALSE}
+```{r err-detection-glmer-with-signal-detection, message=FALSE, warning=FALSE, echo=FALSE}
 
-if(!require(blme)) install.packages("blme")
-library(blme)
+## set up for the dataframe for glmer
 
-run_bayesian_glmer_diagnostics <- function(df_input) {
-  
-  df_clean <- df_input %>%
+  df_clean <- df_clean_all_trials %>%
     filter(stim_type == "target") %>%
     mutate(
       err_reported_clean = case_when(
@@ -1149,6 +1145,18 @@ run_bayesian_glmer_diagnostics <- function(df_input) {
   df_long$ErrorType <- as.factor(df_long$ErrorType)
   contrasts(df_long$ErrorType) <- contr.sum(2) 
   # NonPhon: 1; Phon: -1
+  
+  # yuting: why is it the case that "df_long" had multiple rows for the same ErrorType for the same person? 
+```
+
+
+##### Bayesian GLMER with Signal Detection Framework
+```{r err-detection-glmer-with-signal-detection-bayesian, message=FALSE, warning=FALSE, echo=FALSE}
+
+if(!require(blme)) install.packages("blme")
+library(blme)
+
+run_bayesian_glmer_diagnostics <- function(df_input) {
 
   sdt_model_bayes <- bglmer(
     Reported ~ ErrorType * Present_c * OtherTypePresent_c + (1 | participant_id) + (1 | question), 
