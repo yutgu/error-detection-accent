@@ -361,7 +361,7 @@ df_analysis_targets <- df_clean_all_trials %>%
 ```
 
 
-##### 2.1 Analysis and plots
+#### 1.1 Analysis and plots
 
 ```{r error-detection-functions-to-create-plots, message=FALSE, warning=FALSE, echo=FALSE}
 
@@ -708,489 +708,360 @@ run_plotting_pipeline(df_clean_all_trials)
 
 
 ```{r signal-detection-error-detection, message=FALSE, warning=FALSE, echo=FALSE}
-# function: calculate d' and bias
+# # function: calculate d' and bias
+# 
+# run_sdt_calculation <- function(df_input) {
+# 
+# 
+#   df_clean <- df_input %>%
+#     filter(stim_type == "target") %>%
+#     mutate(
+#       err_reported_clean = case_when(
+#         err_reported == "nanas" ~ "nans",
+#         TRUE ~ err_reported
+#       ),
+#       condition = factor(condition, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
+#     ) %>%
+#     filter(err_reported_clean %in% c("y", "nans", "nun"))
+# 
+#   
+#   sdt_prep <- df_clean %>%
+#     group_by(participant_id, condition) %>% 
+#     summarise(
+#       n_trials = n(),
+#       n_yes = sum(err_reported_clean == "y", na.rm = TRUE),
+#       .groups = "drop"
+#     )
+#   
+#   # false alarm rates from the correct condition
+#   fa_data <- sdt_prep %>%
+#     filter(condition == "correct") %>%
+#     mutate(
+#       far_corrected = (n_yes + 0.5) / (n_trials + 1),
+#       z_far = qnorm(far_corrected)
+#     ) %>%
+#     select(participant_id, z_far)
+#   
+#   # calculate d' for signal detection
+#   sdt_metrics <- sdt_prep %>%
+#     filter(condition != "correct") %>%
+#     left_join(fa_data, by = "participant_id") %>%
+#     mutate(
+#       hr_corrected = (n_yes + 0.5) / (n_trials + 1),
+#       z_hr = qnorm(hr_corrected),
+#       d_prime = z_hr - z_far,
+#       bias_c = -(z_hr + z_far) / 2
+#     ) %>%
+#     mutate(condition = factor(condition, 
+#                               levels = c("phon_err", "non_phon_err", "both_err"),
+#                               labels = c("Phonological", "Non-Phonological", "Both")))
+# 
+#   return(sdt_metrics)
+# }
+# 
+# # statsitical analysis function
+# run_sdt_statistics <- function(sdt_data) {
+#   
+#   
+#   # A.  correct --> phon (Is d' > 0?)
+#   message("\n[Test 1] Can participants distinguish errors from correct sentences?")
+#   detection_stats <- sdt_data %>%
+#     group_by(condition) %>%
+#     t_test(d_prime ~ 1, mu = 0) %>%
+#     adjust_pvalue(method = "bonferroni") %>%
+#     add_significance() %>%
+#     select(condition, statistic, p.adj, p.adj.signif)
+#   
+#   print(kable(detection_stats, caption = "One-sample t-test against 0 (Baseline)"))
+# 
+#   # B. compare across error types (phon vs. non phon vs. both)
+#   message("\n[Test 2] Comparing sensitivity across error types")
+#   
+#   # 1. ANOVA
+#   anova_res <- anova_test(
+#     data = sdt_data, 
+#     dv = d_prime, 
+#     wid = participant_id, 
+#     within = condition
+#   )
+#   print(get_anova_table(anova_res))
+#   
+#   # 2. pairwise contrasts 
+#   #  phon->nonphon, phon->both, nonphon->both
+#   pwc <- sdt_data %>%
+#     pairwise_t_test(d_prime ~ condition, paired = TRUE, p.adjust.method = "bonferroni") %>%
+#     select(group1, group2, p.adj, p.adj.signif)
+#   
+#   print(kable(pwc, caption = "Pairwise Differences"))
+# 
+# }
+# 
+# # plot
+# run_sdt_plot <- function(sdt_data) {
+#   
+#   colors_list <- c("lightsalmon", "skyblue", "plum3")
+#   
+#   # stats for brackets
+#   stat.test <- sdt_data %>%
+#     pairwise_t_test(d_prime ~ condition, paired = TRUE, p.adjust.method = "bonferroni") %>%
+#     add_xy_position(x = "condition")
+#   
+#   p_sdt <- ggboxplot(
+#     sdt_data, 
+#     x = "condition", 
+#     y = "d_prime", 
+#     fill = "condition", 
+#     palette = colors_list,  
+#     add = "jitter",
+#     add.params = list(size = 1.5, alpha = 0.4, color = "darkgray")
+#   ) +
+#     
+#     # baseline reference line
+#     geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 1) +
+#     annotate("text", 
+#              x = 0.6,         
+#              y = 0,            
+#              label = "Chance (0)", 
+#              vjust = -1.2,   
+#              fontface = "italic", 
+#              size = 3.5) +
+#     
+#     # significant brackets
+#     stat_pvalue_manual(
+#       stat.test, 
+#       label = "p.adj.signif", 
+#       tip.length = 0.01,
+#       step.increase = 0.1, 
+#       hide.ns = FALSE      
+#     ) +
+#     labs(
+#       title = "Sensitivity (d') by Error Type",
+#       subtitle = "Signal Detection Analysis",
+#       y = "Sensitivity (d')",
+#       x = NULL
+#     ) +
+#     theme(
+#       legend.position = "none",
+#       axis.text.x = element_text(size = 12, face = "bold"),
+#       axis.title.y = element_text(size = 12, face = "bold"),
+#       plot.title = element_text(face = "bold", hjust = 0.5)
+#     )
+#   
+#   print(p_sdt)
+# }
+# 
+# 
+# my_sdt_results <- run_sdt_calculation(df_clean_all_trials)
+# 
+# run_sdt_statistics(my_sdt_results)
+# 
+# run_sdt_plot(my_sdt_results)
+# ```
+# 
+# 
+# ```{r response-bias-analysis, message=FALSE, warning=FALSE, echo=FALSE}
+# 
+# run_bias_analysis <- function(sdt_data) {
+#   # ANOVA
+#   # Do participants change their response bias depending on the error type?
+#   anova_c <- anova_test(
+#     data = sdt_data, 
+#     dv = bias_c, 
+#     wid = participant_id, 
+#     within = condition
+#   )
+#   
+#   print(kable(get_anova_table(anova_c), caption = "ANOVA: Response Bias by Condition"))
+#   
+#   # descriptive stats
+#   desc_stats <- sdt_data %>%
+#     group_by(condition) %>%
+#     get_summary_stats(bias_c, type = "mean_se")
+#   
+#   print(kable(desc_stats, caption = "Mean Bias (Positive = Conservative, Negative = Liberal)"))
+# 
+#   p_bias <- ggboxplot(
+#     sdt_data, 
+#     x = "condition", 
+#     y = "bias_c", 
+#     fill = "condition", 
+#     palette = c("lightsalmon", "skyblue", "plum3"),
+#     add = "jitter",
+#     add.params = list(size = 1.5, alpha = 0.4, color = "darkgray")
+#   ) +
+#     # neutral bias
+#     geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 1) +
+#     annotate("text", 
+#              x = 0.6,         
+#              y = 0,            
+#              label = "Neutral (0)", 
+#              vjust = -1.2,     
+#              fontface = "italic", 
+#              size = 3.5) +
+#     
+#     labs(
+#       title = "Response Bias (c) by Condition",
+#       subtitle = "Positive = Conservative | Negative = Liberal",
+#       y = "Bias criterion (c)",
+#       x = NULL
+#     ) +
+#     theme(legend.position = "none")
+#   
+#   print(p_bias)
+# }
+# 
+# run_bias_analysis(my_sdt_results)
+# ```
+# 
+# 
+# ```{r err-detection-stats-glmer-hit-rates, message=FALSE, warning=FALSE, echo=FALSE}
+# run_stats_pipeline <- function(df_input) {
+# 
+#   df_input <- df_input %>%
+#     group_by(participant_id) %>%
+#     mutate(trial_num_sequential = match(question, unique(question))) %>%
+#     ungroup()
+#   
+#   df_analysis <- df_input %>%
+#     filter(stim_type == "target") %>%
+#     mutate(
+#       err_reported_clean = case_when(
+#         err_reported == "nanas" ~ "nans",
+#         TRUE ~ err_reported
+#       ),
+#       condition = factor(condition, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
+#     )
+#   
+#   df_trial_level <- df_analysis %>%
+#     group_by(participant_id, question, condition) %>%
+#     summarise(
+#       detected_phon = any(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both")),
+#       detected_nonphon = any(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both")),
+#       .groups = "drop"
+#     )
+# 
+#   
+#   # =======================================================
+#   # TEST 1: Phonological Detection
+#   # Compare: Phon Only vs. Both Errors
+#   # Question: Does adding a Non-Phon error make it harder/easier to spot the Phon error?
+#   # =======================================================
+#   
+#   df_stats_phon <- df_trial_level %>%
+#     filter(condition %in% c("phon_err", "both_err")) %>%
+#     mutate(
+#       # set 'phon_err' as the reference level
+#       condition = factor(condition, levels = c("phon_err", "both_err")),
+#       detected_phon_num = as.numeric(detected_phon)
+#     )
+#   
+#   message(" Model 1: Phonological Error Detection (Phon vs. Both)")
+#   
+#   model_phon <- glmer(detected_phon_num ~ condition + (1 | participant_id), 
+#                       data = df_stats_phon, 
+#                       family = binomial)
+#   
+#   print(summary(model_phon))
+#   
+#   # Odds Ratio 
+#   # OR < 1, detection is worse in 'Both'. 
+#   # OR > 1, detection is better in 'Both'.
+#   or_phon <- exp(fixef(model_phon))["conditionboth_err"]
+#   message(paste("\nOdds Ratio (Both vs Phon):", round(or_phon, 3)))
+#   
+#   
+#   # =======================================================
+#   # TEST 2: Non-Phonological Detection
+#   # Compare: Non-Phon Only vs. Both Errors
+#   # Question: Does adding a Phon error make it harder/easier to spot the Non-Phon error?
+#   # =======================================================
+#   
+#   df_stats_nonphon <- df_trial_level %>%
+#     filter(condition %in% c("non_phon_err", "both_err")) %>%
+#     mutate(
+#       # set 'non_phon_err' as the reference level
+#       condition = factor(condition, levels = c("non_phon_err", "both_err")),
+#       detected_nonphon_num = as.numeric(detected_nonphon)
+#     )
+#   
+# 
+#   message(" Model 2: Non-phonological Error Detection (Non-Phon vs. Both)")
+# 
+#   
+#   model_nonphon <- glmer(detected_nonphon_num ~ condition + (1 | participant_id), 
+#                          data = df_stats_nonphon, 
+#                          family = binomial)
+#   
+#   print(summary(model_nonphon))
+#   
+#   #  Odds Ratio
+#   or_nonphon <- exp(fixef(model_nonphon))["conditionboth_err"]
+#   message(paste("\nOdds Ratio (Both vs Non-Phon):", round(or_nonphon, 3)))
+#   
+# }
+# 
+# run_stats_pipeline(df_clean_all_trials)
 
-run_sdt_calculation <- function(df_input) {
-
-
-  df_clean <- df_input %>%
-    filter(stim_type == "target") %>%
-    mutate(
-      err_reported_clean = case_when(
-        err_reported == "nanas" ~ "nans",
-        TRUE ~ err_reported
-      ),
-      condition = factor(condition, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
-    ) %>%
-    filter(err_reported_clean %in% c("y", "nans", "nun"))
-
-  
-  sdt_prep <- df_clean %>%
-    group_by(participant_id, condition) %>% 
-    summarise(
-      n_trials = n(),
-      n_yes = sum(err_reported_clean == "y", na.rm = TRUE),
-      .groups = "drop"
-    )
-  
-  # false alarm rates from the correct condition
-  fa_data <- sdt_prep %>%
-    filter(condition == "correct") %>%
-    mutate(
-      far_corrected = (n_yes + 0.5) / (n_trials + 1),
-      z_far = qnorm(far_corrected)
-    ) %>%
-    select(participant_id, z_far)
-  
-  # calculate d' for signal detection
-  sdt_metrics <- sdt_prep %>%
-    filter(condition != "correct") %>%
-    left_join(fa_data, by = "participant_id") %>%
-    mutate(
-      hr_corrected = (n_yes + 0.5) / (n_trials + 1),
-      z_hr = qnorm(hr_corrected),
-      d_prime = z_hr - z_far,
-      bias_c = -(z_hr + z_far) / 2
-    ) %>%
-    mutate(condition = factor(condition, 
-                              levels = c("phon_err", "non_phon_err", "both_err"),
-                              labels = c("Phonological", "Non-Phonological", "Both")))
-
-  return(sdt_metrics)
-}
-
-# statsitical analysis function
-run_sdt_statistics <- function(sdt_data) {
-  
-  
-  # A.  correct --> phon (Is d' > 0?)
-  message("\n[Test 1] Can participants distinguish errors from correct sentences?")
-  detection_stats <- sdt_data %>%
-    group_by(condition) %>%
-    t_test(d_prime ~ 1, mu = 0) %>%
-    adjust_pvalue(method = "bonferroni") %>%
-    add_significance() %>%
-    select(condition, statistic, p.adj, p.adj.signif)
-  
-  print(kable(detection_stats, caption = "One-sample t-test against 0 (Baseline)"))
-
-  # B. compare across error types (phon vs. non phon vs. both)
-  message("\n[Test 2] Comparing sensitivity across error types")
-  
-  # 1. ANOVA
-  anova_res <- anova_test(
-    data = sdt_data, 
-    dv = d_prime, 
-    wid = participant_id, 
-    within = condition
-  )
-  print(get_anova_table(anova_res))
-  
-  # 2. pairwise contrasts 
-  #  phon->nonphon, phon->both, nonphon->both
-  pwc <- sdt_data %>%
-    pairwise_t_test(d_prime ~ condition, paired = TRUE, p.adjust.method = "bonferroni") %>%
-    select(group1, group2, p.adj, p.adj.signif)
-  
-  print(kable(pwc, caption = "Pairwise Differences"))
-
-}
-
-# plot
-run_sdt_plot <- function(sdt_data) {
-  
-  colors_list <- c("lightsalmon", "skyblue", "plum3")
-  
-  # stats for brackets
-  stat.test <- sdt_data %>%
-    pairwise_t_test(d_prime ~ condition, paired = TRUE, p.adjust.method = "bonferroni") %>%
-    add_xy_position(x = "condition")
-  
-  p_sdt <- ggboxplot(
-    sdt_data, 
-    x = "condition", 
-    y = "d_prime", 
-    fill = "condition", 
-    palette = colors_list,  
-    add = "jitter",
-    add.params = list(size = 1.5, alpha = 0.4, color = "darkgray")
-  ) +
-    
-    # baseline reference line
-    geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 1) +
-    annotate("text", 
-             x = 0.6,         
-             y = 0,            
-             label = "Chance (0)", 
-             vjust = -1.2,   
-             fontface = "italic", 
-             size = 3.5) +
-    
-    # significant brackets
-    stat_pvalue_manual(
-      stat.test, 
-      label = "p.adj.signif", 
-      tip.length = 0.01,
-      step.increase = 0.1, 
-      hide.ns = FALSE      
-    ) +
-    labs(
-      title = "Sensitivity (d') by Error Type",
-      subtitle = "Signal Detection Analysis",
-      y = "Sensitivity (d')",
-      x = NULL
-    ) +
-    theme(
-      legend.position = "none",
-      axis.text.x = element_text(size = 12, face = "bold"),
-      axis.title.y = element_text(size = 12, face = "bold"),
-      plot.title = element_text(face = "bold", hjust = 0.5)
-    )
-  
-  print(p_sdt)
-}
-
-
-my_sdt_results <- run_sdt_calculation(df_clean_all_trials)
-
-run_sdt_statistics(my_sdt_results)
-
-run_sdt_plot(my_sdt_results)
 ```
 
+#### Trial-level GLMER with Signal Detection Framework
 
-```{r response-bias-analysis, message=FALSE, warning=FALSE, echo=FALSE}
-
-run_bias_analysis <- function(sdt_data) {
-  # ANOVA
-  # Do participants change their response bias depending on the error type?
-  anova_c <- anova_test(
-    data = sdt_data, 
-    dv = bias_c, 
-    wid = participant_id, 
-    within = condition
-  )
-  
-  print(kable(get_anova_table(anova_c), caption = "ANOVA: Response Bias by Condition"))
-  
-  # descriptive stats
-  desc_stats <- sdt_data %>%
-    group_by(condition) %>%
-    get_summary_stats(bias_c, type = "mean_se")
-  
-  print(kable(desc_stats, caption = "Mean Bias (Positive = Conservative, Negative = Liberal)"))
-
-  p_bias <- ggboxplot(
-    sdt_data, 
-    x = "condition", 
-    y = "bias_c", 
-    fill = "condition", 
-    palette = c("lightsalmon", "skyblue", "plum3"),
-    add = "jitter",
-    add.params = list(size = 1.5, alpha = 0.4, color = "darkgray")
-  ) +
-    # neutral bias
-    geom_hline(yintercept = 0, linetype = "dashed", color = "black", size = 1) +
-    annotate("text", 
-             x = 0.6,         
-             y = 0,            
-             label = "Neutral (0)", 
-             vjust = -1.2,     
-             fontface = "italic", 
-             size = 3.5) +
-    
-    labs(
-      title = "Response Bias (c) by Condition",
-      subtitle = "Positive = Conservative | Negative = Liberal",
-      y = "Bias criterion (c)",
-      x = NULL
-    ) +
-    theme(legend.position = "none")
-  
-  print(p_bias)
-}
-
-run_bias_analysis(my_sdt_results)
-```
-
-
-```{r err-detection-stats-glmer-hit-rates, message=FALSE, warning=FALSE, echo=FALSE}
-run_stats_pipeline <- function(df_input) {
-
-  df_input <- df_input %>%
-    group_by(participant_id) %>%
-    mutate(trial_num_sequential = match(question, unique(question))) %>%
-    ungroup()
-  
-  df_analysis <- df_input %>%
-    filter(stim_type == "target") %>%
-    mutate(
-      err_reported_clean = case_when(
-        err_reported == "nanas" ~ "nans",
-        TRUE ~ err_reported
-      ),
-      condition = factor(condition, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
-    )
-  
-  df_trial_level <- df_analysis %>%
-    group_by(participant_id, question, condition) %>%
-    summarise(
-      detected_phon = any(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both")),
-      detected_nonphon = any(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both")),
-      .groups = "drop"
-    )
-
-  
-  # =======================================================
-  # TEST 1: Phonological Detection
-  # Compare: Phon Only vs. Both Errors
-  # Question: Does adding a Non-Phon error make it harder/easier to spot the Phon error?
-  # =======================================================
-  
-  df_stats_phon <- df_trial_level %>%
-    filter(condition %in% c("phon_err", "both_err")) %>%
-    mutate(
-      # set 'phon_err' as the reference level
-      condition = factor(condition, levels = c("phon_err", "both_err")),
-      detected_phon_num = as.numeric(detected_phon)
-    )
-  
-  message(" Model 1: Phonological Error Detection (Phon vs. Both)")
-  
-  model_phon <- glmer(detected_phon_num ~ condition + (1 | participant_id), 
-                      data = df_stats_phon, 
-                      family = binomial)
-  
-  print(summary(model_phon))
-  
-  # Odds Ratio 
-  # OR < 1, detection is worse in 'Both'. 
-  # OR > 1, detection is better in 'Both'.
-  or_phon <- exp(fixef(model_phon))["conditionboth_err"]
-  message(paste("\nOdds Ratio (Both vs Phon):", round(or_phon, 3)))
-  
-  
-  # =======================================================
-  # TEST 2: Non-Phonological Detection
-  # Compare: Non-Phon Only vs. Both Errors
-  # Question: Does adding a Phon error make it harder/easier to spot the Non-Phon error?
-  # =======================================================
-  
-  df_stats_nonphon <- df_trial_level %>%
-    filter(condition %in% c("non_phon_err", "both_err")) %>%
-    mutate(
-      # set 'non_phon_err' as the reference level
-      condition = factor(condition, levels = c("non_phon_err", "both_err")),
-      detected_nonphon_num = as.numeric(detected_nonphon)
-    )
-  
-
-  message(" Model 2: Non-phonological Error Detection (Non-Phon vs. Both)")
-
-  
-  model_nonphon <- glmer(detected_nonphon_num ~ condition + (1 | participant_id), 
-                         data = df_stats_nonphon, 
-                         family = binomial)
-  
-  print(summary(model_nonphon))
-  
-  #  Odds Ratio
-  or_nonphon <- exp(fixef(model_nonphon))["conditionboth_err"]
-  message(paste("\nOdds Ratio (Both vs Non-Phon):", round(or_nonphon, 3)))
-  
-}
-
-run_stats_pipeline(df_clean_all_trials)
-```
-
-
-#### trial-level GLMER
-
-##### standard GLMER with Signal Detection Framework
-
-```{r err-detection-glmer-with-signal-detection, message=FALSE, warning=FALSE, echo=FALSE}
-
-
-run_glmer_sdt_analysis <- function(df_input) {
-  
-  df_clean <- df_input %>%
-    filter(stim_type == "target") %>%
-    mutate(
-      err_reported_clean = case_when(
-        err_reported == "nanas" ~ "nans",
-        TRUE ~ err_reported
-      ),
-      condition = factor(condition, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
-    )
-  
-  #  "Hit" status per type per trial 
-  #  first determine if they reported Phon or NonPhon for every trial
-  df_trial_coded <- df_clean %>%
-    mutate(
-      # Did the subject report a Phonological error?
-      reported_phon = if_else(
-        err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0
-      ),
-      
-      # Did the subject report a Non-Phonological error?
-      reported_nonphon = if_else(
-        err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0
-      )
-    )
-
-  # reshape
-  # split every trial into two rows: 
-  # Row A: The "Phonological Perspective"
-  # Row B: The "Non-Phonological Perspective"
-  
-  # Phonological Perspective
-  df_phon_view <- df_trial_coded %>%
-    mutate(
-      ErrorType = "Phon",
-      Reported  = reported_phon, # DV: Did they report Phon?
-      
-      # Is Phon Present in this trial? (Yes for 'phon_err' and 'both_err')
-      Present = if_else(condition %in% c("phon_err", "both_err"), 1, 0),
-      
-      # Is the other type (NonPhon) present? (Yes for 'non_phon_err' and 'both_err')
-      OtherTypePresent = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0)
-    )
-  
-  # Non-Phonological Perspective
-  df_nonphon_view <- df_trial_coded %>%
-    mutate(
-      ErrorType = "NonPhon",
-      Reported  = reported_nonphon, # DV: Did they report NonPhon?
-      
-      # Is NonPhon Present in this trial?
-      Present = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0),
-      
-      # Is the other type (Phon) present?
-      OtherTypePresent = if_else(condition %in% c("phon_err", "both_err"), 1, 0)
-    )
-  
-  # combine both perspectives
-  df_long <- bind_rows(df_phon_view, df_nonphon_view) %>%
-    select(participant_id, question, ErrorType, Reported, Present, OtherTypePresent)
-  
-  
-
-  
-  # 1. ErrorType as Factor with sum coding
-  df_long$ErrorType <- as.factor(df_long$ErrorType)
-  contrasts(df_long$ErrorType) <- contr.sum(2) 
- # NonPhon: 1; Phon: -1
-  
-  # scale(center=T, scale=T). 
-  df_long$Present_c <- as.numeric(scale(df_long$Present, center = TRUE, scale = TRUE))
-  df_long$OtherTypePresent_c <- as.numeric(scale(df_long$OtherTypePresent, center = TRUE, scale = TRUE))
-
-  
-  sdt_model <- glmer(
-    Reported ~ ErrorType * Present_c * OtherTypePresent_c + 
-      (1 + Present_c | participant_id) + 
-      (1 | question), 
-    data = df_long, 
-    family = binomial,
-    control = glmerControl(optimizer = "bobyqa") 
-  )
-  
-  return(list(data = df_long, model = sdt_model))
-}
-
-
-results <- run_glmer_sdt_analysis(df_clean_all_trials)
-
-summary(results$model)
-```
+##### Standard GLMER
 
 ```{r setting-df-ready-for-glmer, message=FALSE, warning=FALSE, echo=FALSE}
 
-## set up for the dataframe for glmer
-
-  df_clean <- df_clean_all_trials %>%
-    filter(stim_type == "target") %>%
-    mutate(
-      err_reported_clean = case_when(
-        err_reported == "nanas" ~ "nans",
-        TRUE ~ err_reported
-      ),
-      condition = factor(condition, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
-    )
-  
-  df_trial_coded <- df_clean %>%
-    mutate(
-      reported_phon = if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0),
-      reported_nonphon = if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)
-    )
-
-  df_phon_view <- df_trial_coded %>%
-    mutate(ErrorType = "Phon", Reported = reported_phon, 
-           Present = if_else(condition %in% c("phon_err", "both_err"), 1, 0),
-           OtherTypePresent = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0))
-  
-  df_nonphon_view <- df_trial_coded %>%
-    mutate(ErrorType = "NonPhon", Reported = reported_nonphon, 
-           Present = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0),
-           OtherTypePresent = if_else(condition %in% c("phon_err", "both_err"), 1, 0))
-  
-  df_long <- bind_rows(df_phon_view, df_nonphon_view) %>%
-    select(participant_id, question, ErrorType, Reported, Present, OtherTypePresent)
-  
-  # center variables
-  df_long$Present_c <- df_long$Present - 0.5
-  df_long$OtherTypePresent_c <- df_long$OtherTypePresent - 0.5
-  
-  # sum coding
-  df_long$ErrorType <- as.factor(df_long$ErrorType)
-  contrasts(df_long$ErrorType) <- contr.sum(2) 
-  # NonPhon: 1; Phon: -1
-  
-  # yuting: why is it the case that "df_long" had multiple rows for the same ErrorType for the same person? 
-```
-
-
-##### Bayesian GLMER with Signal Detection Framework
-```{r err-detection-glmer-with-signal-detection-bayesian, message=FALSE, warning=FALSE, echo=FALSE}
-
-library(blme)
-
-run_bayesian_glmer_diagnostics <- function(df_input) {
-
-  sdt_model_bayes <- bglmer(
-    Reported ~ ErrorType * Present_c * OtherTypePresent_c + (1 | participant_id) + (1 | question), 
-    data = df_input, family = binomial,
-    fixef.prior = normal, cov.prior = gamma
+df_clean <- df_clean_all_trials %>%
+  filter(stim_type == "target") %>%
+  mutate(
+    err_reported_clean = case_when(
+      err_reported == "nanas" ~ "nans",
+      TRUE ~ err_reported
+    ),
+    condition = factor(condition, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
   )
-  
-  return(list(model = sdt_model_bayes, data = df_input))
-}
 
-final_output <- run_bayesian_glmer_diagnostics(df_long)
-
-bayes_sdt_model <- final_output$model
-bayes_sdt_data  <- final_output$data
-
-
-summary(bayes_sdt_model)
-
-# checks why non Bayesian one fails
-# very low (almost 0 false alarm rates for the Non-Phon type)
-# diagnostics
-diagnostic_table <- bayes_sdt_data %>%
-  group_by(ErrorType, Present, OtherTypePresent) %>%
+# collapse multiple attempts into one result per trial
+# if they reported the error in Attempt 1 or Attempt 2, it counts as a hit (1).
+df_trial_coded <- df_clean %>%
+  group_by(participant_id, question, condition) %>%
   summarise(
-    Total_Trials = n(),
-    Reported_Yes = sum(Reported == 1),
-    Reported_No = sum(Reported == 0),
-    Percentage_Yes = round(mean(Reported)*100, 2)
+    reported_phon = max(if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0)),
+    reported_nonphon = max(if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)),
+    .groups = "drop"
   )
 
-print(diagnostic_table)
+# phonological view
+df_phon_view <- df_trial_coded %>%
+  mutate(ErrorType = "Phon", 
+         Reported = reported_phon, 
+         Present = if_else(condition %in% c("phon_err", "both_err"), 1, 0),
+         OtherTypePresent = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0))
+
+# non-phonological view
+df_nonphon_view <- df_trial_coded %>%
+  mutate(ErrorType = "NonPhon", 
+         Reported = reported_nonphon, 
+         Present = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0),
+         OtherTypePresent = if_else(condition %in% c("phon_err", "both_err"), 1, 0))
+
+
+df_long <- bind_rows(df_phon_view, df_nonphon_view) %>%
+  select(participant_id, question, ErrorType, Reported, Present, OtherTypePresent)
+
+# center variables
+df_long$Present_c <- df_long$Present - 0.5
+df_long$OtherTypePresent_c <- df_long$OtherTypePresent - 0.5
+
+# Sum coding for ErrorType
+df_long$ErrorType <- as.factor(df_long$ErrorType)
+contrasts(df_long$ErrorType) <- contr.sum(2) 
+# NonPhon is 1 or -1
+
+
 ```
+
 
 ```{r err-detection-glmer-with-signal-detection, message=FALSE, warning=FALSE, echo=FALSE}
-
 m1 <- glmer(
   Reported ~ ErrorType * Present_c + ErrorType * OtherTypePresent_c +
     (1 | participant_id) + (1 | question),
@@ -1201,9 +1072,221 @@ m1 <- glmer(
 summary(m1)
 
 
-sink("model_summary.txt")
+sink("model_summary_new.txt")
 summary(m1)
 sink()
+```
+
+##### Standard GLMER Plots
+```{r err-detection-glmer-with-signal-detection-plots, message=FALSE, warning=FALSE, echo=FALSE}
+prepare_aligned_sdt_data <- function(df_input) {
+  
+  df_clean <- df_input %>%
+    filter(stim_type == "target") %>%
+    mutate(
+      err_reported_clean = case_when(
+        err_reported == "nanas" ~ "nans",
+        TRUE ~ err_reported
+      )
+    )
+  
+  df_trial_coded <- df_clean %>%
+    group_by(participant_id, question, condition) %>%
+    summarise(
+      reported_phon = max(if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0)),
+      reported_nonphon = max(if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)),
+      .groups = "drop"
+    )
+
+  df_phon <- df_trial_coded %>%
+    mutate(
+      ErrorType = "Phonological",
+      Reported = reported_phon,
+      IsSignal = if_else(condition %in% c("phon_err", "both_err"), 1, 0)
+    ) %>%
+    select(participant_id, ErrorType, IsSignal, Reported)
+  
+  df_nonphon <- df_trial_coded %>%
+    mutate(
+      ErrorType = "Non-Phonological",
+      Reported = reported_nonphon,
+      IsSignal = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0)
+    ) %>%
+    select(participant_id, ErrorType, IsSignal, Reported)
+  
+  df_long <- bind_rows(df_phon, df_nonphon)
+  
+  return(df_long)
+}
+
+
+calculate_sdt_metrics <- function(df_long) {
+  
+  sdt_stats <- df_long %>%
+    group_by(participant_id, ErrorType) %>%
+    summarise(
+      hits = sum(Reported == 1 & IsSignal == 1),
+      misses = sum(Reported == 0 & IsSignal == 1),
+      fas = sum(Reported == 1 & IsSignal == 0),
+      crs = sum(Reported == 0 & IsSignal == 0),
+      hit_rate = (hits + 0.5) / (hits + misses + 1),
+      fa_rate = (fas + 0.5) / (fas + crs + 1),
+      
+      .groups = "drop"
+    ) %>%
+    mutate(
+      # d' and c
+      z_hr = qnorm(hit_rate),
+      z_fa = qnorm(fa_rate),
+      d_prime = z_hr - z_fa,
+      c_bias = -(z_hr + z_fa) / 2
+    )
+  
+  return(sdt_stats)
+}
+
+  
+run_glmer_plots <- function(sdt_data) {
+  
+  my_colors <- c("lightsalmon", "skyblue") 
+  
+  stat_sens <- tibble(
+    group1 = "Phonological", 
+    group2 = "Non-Phonological",
+    p.adj = "0.017", 
+    p.signif = "*",
+    y.position = max(sdt_data$d_prime) + 0.2
+  )
+  
+  stat_bias <- tibble(
+    group1 = "Phonological", 
+    group2 = "Non-Phonological",
+    p.adj = "0.64", 
+    p.signif = "ns",
+    y.position = max(sdt_data$c_bias) + 0.2
+  )
+
+  # sensitivity 
+  p_dprime <- ggboxplot(
+    sdt_data, x = "ErrorType", y = "d_prime", fill = "ErrorType", 
+    palette = my_colors, add = "jitter",
+    add.params = list(size = 1.5, alpha = 0.4, color = "darkgray")
+  ) +
+    stat_pvalue_manual(stat_sens, label = "p.signif", tip.length = 0.01, size. = 10) +
+    labs(
+      title = "Sensitivity (d') by Error Type",
+      subtitle = "Standard GLMER Result: p = .017",
+      y = "Sensitivity (d')", x = NULL
+    ) +
+    theme(legend.position = "none", plot.title = element_text(face="bold", hjust=0.5))
+  
+  # bias
+  p_bias <- ggboxplot(
+    sdt_data, x = "ErrorType", y = "c_bias", fill = "ErrorType", 
+    palette = my_colors, add = "jitter",
+    add.params = list(size = 1.5, alpha = 0.4, color = "darkgray")
+  ) +
+    stat_pvalue_manual(stat_bias, label = "p.signif", tip.length = 0.01, size. = 5) +
+    geom_hline(yintercept = 0, linetype = "dashed") + 
+    annotate("text", x = 1.5, y = 0, label = "Neutral Bias", vjust = -1, fontface="italic", size=3) +
+    labs(
+      title = "Response Bias (c) by Error Type",
+      subtitle = "Standard GLMER Result: p = .64 (ns)",
+      y = "Bias (c)", x = NULL
+    ) +
+    theme(legend.position = "none", plot.title = element_text(face="bold", hjust=0.5))
+  
+  print(p_dprime)
+  print(p_bias)
+}
+
+df_aligned <- prepare_aligned_sdt_data(df_clean_all_trials)
+
+sdt_metrics_new <- calculate_sdt_metrics(df_aligned)
+
+run_glmer_plots(sdt_metrics_new)
+```
+
+
+```{r err-detection-glmer-with-signal-detection-plots-interaction effects, message=FALSE, warning=FALSE, echo=FALSE}
+
+prepare_interaction_data <- function(df_input) {
+  
+  df_clean <- df_input %>%
+    filter(stim_type == "target") %>%
+    mutate(err_reported_clean = case_when(err_reported == "nanas" ~ "nans", TRUE ~ err_reported))
+  
+  df_trial_coded <- df_clean %>%
+    group_by(participant_id, question, condition) %>%
+    summarise(
+      reported_phon = max(if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0)),
+      reported_nonphon = max(if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)),
+      .groups = "drop"
+    )
+
+  df_phon <- df_trial_coded %>%
+    filter(condition %in% c("phon_err", "both_err")) %>% 
+    mutate(
+      ErrorType = "Phonological", 
+      Reported = reported_phon, 
+      Context = if_else(condition == "both_err", "Dual (Both)", "Single (Alone)")
+    ) %>%
+    select(participant_id, ErrorType, Context, Reported)
+  
+  df_nonphon <- df_trial_coded %>%
+    filter(condition %in% c("non_phon_err", "both_err")) %>% 
+    mutate(
+      ErrorType = "Non-Phonological", 
+      Reported = reported_nonphon, 
+      Context = if_else(condition == "both_err", "Dual (Both)", "Single (Alone)")
+    ) %>%
+    select(participant_id, ErrorType, Context, Reported)
+  
+  df_long <- bind_rows(df_phon, df_nonphon)
+  
+  df_long$Context <- factor(df_long$Context, levels = c("Single (Alone)", "Dual (Both)"))
+  
+  return(df_long)
+}
+
+
+calculate_hit_rates <- function(df_long) {
+  df_long %>%
+    group_by(participant_id, ErrorType, Context) %>%
+    summarise(
+      hit_rate = mean(Reported), 
+      .groups = "drop"
+    )
+}
+
+
+run_masking_plot <- function(plot_data) {
+  
+  my_colors <- c("lightsalmon", "skyblue") 
+  
+  ggline(
+    plot_data, x = "Context", y = "hit_rate", color = "ErrorType",
+    add = c("mean_se", "jitter"),
+    palette = my_colors,
+    position = position_dodge(0.2), 
+    size = 1 
+  ) +
+    labs(
+      title = "The Masking Effect (Resource Competition)",
+      subtitle = "Does detection drop when a second error is added?\n(Downward slope = Masking)",
+      y = "Hit Rate (Probability of Detection)",
+      x = NULL,
+      caption = "GLMER Result: Marginal Masking Trend (p = .064)"
+    ) +
+    theme(
+      plot.title = element_text(face="bold", hjust=0.5),
+      legend.position = "top"
+    )
+}
+
+df_interaction <- prepare_interaction_data(df_clean_all_trials)
+stats_interaction <- calculate_hit_rates(df_interaction)
+run_masking_plot(stats_interaction)
 ```
 
 
