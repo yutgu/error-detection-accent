@@ -1010,6 +1010,8 @@ run_plotting_pipeline(df_clean_all_trials)
 
 ```{r setting-df-ready-for-glmer, message=FALSE, warning=FALSE, echo=FALSE}
 
+
+##### Both attempts #####
 df_clean <- df_clean_all_trials %>%
   filter(stim_type == "target") %>%
   mutate(
@@ -1058,10 +1060,60 @@ contrasts(df_long$ErrorType) <- contr.sum(2)
 # NonPhon is 1 or -1
 
 
+
+##### First attempt only #####
+
+df_clean_first_att <- df_clean_all_trials %>%
+  filter(stim_type == "target") %>%
+  group_by(participant_id, question) %>%
+  slice(1) %>% 
+  ungroup() %>%
+  mutate(
+    err_reported_clean = case_when(
+      err_reported == "nanas" ~ "nans",
+      TRUE ~ err_reported
+    ),
+    condition = factor(condition, levels = c("correct", "phon_err", "non_phon_err", "both_err"))
+  )
+
+
+df_trial_coded_first_att <- df_clean_first_att %>%
+  group_by(participant_id, question, condition) %>%
+  summarise(
+    reported_phon = max(if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0)),
+    reported_nonphon = max(if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)),
+    .groups = "drop"
+  )
+
+df_phon_view_first_att <- df_trial_coded_first_att %>%
+  mutate(ErrorType = "Phon", 
+         Reported = reported_phon, 
+         Present = if_else(condition %in% c("phon_err", "both_err"), 1, 0),
+         OtherTypePresent = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0))
+
+df_nonphon_view_first_att <- df_trial_coded_first_att %>%
+  mutate(ErrorType = "NonPhon", 
+         Reported = reported_nonphon, 
+         Present = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0),
+         OtherTypePresent = if_else(condition %in% c("phon_err", "both_err"), 1, 0))
+
+df_long_first_att <- bind_rows(df_phon_view_first_att, df_nonphon_view_first_att) %>%
+  select(participant_id, question, ErrorType, Reported, Present, OtherTypePresent)
+
+
+df_long_first_att$Present_c <- df_long_first_att$Present - 0.5
+df_long_first_att$OtherTypePresent_c <- df_long_first_att$OtherTypePresent - 0.5
+
+
+df_long_first_att$ErrorType <- as.factor(df_long_first_att$ErrorType)
+contrasts(df_long_first_att$ErrorType) <- contr.sum(2) 
+# NonPhon=1, Phon=-1
+
 ```
 
 
 ```{r err-detection-glmer-with-signal-detection, message=FALSE, warning=FALSE, echo=FALSE}
+##### Both attempts #####
 m1 <- glmer(
   Reported ~ ErrorType * Present_c + ErrorType * OtherTypePresent_c +
     (1 | participant_id) + (1 | question),
@@ -1075,9 +1127,26 @@ summary(m1)
 sink("model_summary_new.txt")
 summary(m1)
 sink()
+
+
+##### First attempt only #####
+
+m1_attempt1 <- glmer(
+  Reported ~ ErrorType * Present_c + ErrorType * OtherTypePresent_c +
+    (1 | participant_id) + (1 | question),
+  data = df_long_first_att %>% filter(!(Present == 0 & OtherTypePresent == 0)), 
+  family = binomial
+)
+
+summary(m1_attempt1)
+sink("model_summary_first_attempt_only.txt")
+
+
 ```
 
 ##### Standard GLMER Plots
+
+###### Two Attempts
 ```{r err-detection-glmer-with-signal-detection-plots, message=FALSE, warning=FALSE, echo=FALSE}
 prepare_aligned_sdt_data <- function(df_input) {
   
@@ -1272,7 +1341,7 @@ run_masking_plot <- function(plot_data) {
     size = 1 
   ) +
     labs(
-      title = "The Masking Effect (Resource Competition)",
+      title = "The Masking Effect (Both Attempts)",
       subtitle = "Does detection drop when a second error is added?\n(Downward slope = Masking)",
       y = "Hit Rate (Probability of Detection)",
       x = NULL,
@@ -1289,6 +1358,282 @@ stats_interaction <- calculate_hit_rates(df_interaction)
 run_masking_plot(stats_interaction)
 ```
 
+###### First Attempt Only
+```{r sdt-glmer-plots-first-attempt-only, message=FALSE, warning=FALSE, echo=FALSE}
+
+prepare_sdt_data_attempt1 <- function(df_input) {
+  
+  df_clean <- df_input %>%
+    filter(stim_type == "target") %>%
+    group_by(participant_id, question) %>%
+    slice(1) %>% 
+    ungroup() %>%
+    mutate(
+      err_reported_clean = case_when(
+        err_reported == "nanas" ~ "nans",
+        TRUE ~ err_reported
+      )
+    )
+  
+  df_trial_coded <- df_clean %>%
+    mutate(
+      reported_phon = if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0),
+      reported_nonphon = if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)
+    )
+
+  df_phon <- df_trial_coded %>%
+    mutate(
+      ErrorType = "Phonological",
+      Reported = reported_phon,
+      IsSignal = if_else(condition %in% c("phon_err", "both_err"), 1, 0)
+    ) %>%
+    select(participant_id, ErrorType, IsSignal, Reported)
+  
+  df_nonphon <- df_trial_coded %>%
+    mutate(
+      ErrorType = "Non-Phonological",
+      Reported = reported_nonphon,
+      IsSignal = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0)
+    ) %>%
+    select(participant_id, ErrorType, IsSignal, Reported)
+  
+  return(bind_rows(df_phon, df_nonphon))
+}
+
+
+sdt_metrics_att1 <- calculate_sdt_metrics(prepare_sdt_data_attempt1(df_clean_all_trials))
+
+
+run_plots_attempt1 <- function(sdt_data) {
+  
+  my_colors <- c("lightsalmon", "skyblue") 
+  
+  stat_sens <- tibble(
+    group1 = "Phonological", 
+    group2 = "Non-Phonological",
+    p.adj = "0.23", 
+    p.signif = "ns",
+    y.position = max(sdt_data$d_prime) + 0.2
+  )
+  
+  stat_bias <- tibble(
+    group1 = "Phonological", 
+    group2 = "Non-Phonological",
+    p.adj = "0.80", 
+    p.signif = "ns",
+    y.position = max(sdt_data$c_bias) + 0.2
+  )
+
+ 
+  p_dprime <- ggboxplot(
+    sdt_data, x = "ErrorType", y = "d_prime", fill = "ErrorType", 
+    palette = my_colors, add = "jitter",
+    add.params = list(size = 1.5, alpha = 0.4, color = "darkgray")
+  ) +
+    stat_pvalue_manual(stat_sens, label = "p.signif", tip.length = 0.01, size = 5) +
+    labs(
+      title = "Sensitivity (d') - 1st Attempt",
+      subtitle = "Result: No Difference (p = .23)",
+      y = "Sensitivity (d')", x = NULL
+    ) +
+    theme(legend.position = "none", plot.title = element_text(face="bold", hjust=0.5))
+  
+
+  p_bias <- ggboxplot(
+    sdt_data, x = "ErrorType", y = "c_bias", fill = "ErrorType", 
+    palette = my_colors, add = "jitter",
+    add.params = list(size = 1.5, alpha = 0.4, color = "darkgray")
+  ) +
+    stat_pvalue_manual(stat_bias, label = "p.signif", tip.length = 0.01, size = 5) +
+    geom_hline(yintercept = 0, linetype = "dashed") + 
+    annotate("text", x = 1.5, y = 0, label = "Neutral Bias", vjust = -1, fontface="italic", size=3) +
+    labs(
+      title = "Response Bias (c) - 1st Attempt",
+      subtitle = "Result: No Difference (p = .80)",
+      y = "Bias (c)", x = NULL
+    ) +
+    theme(legend.position = "none", plot.title = element_text(face="bold", hjust=0.5))
+  
+  print(p_dprime)
+  print(p_bias)
+}
+
+run_plots_attempt1(sdt_metrics_att1)
+```
+
+
+```{r sdt-glmer-plots-first-attempt-only-interaction, message=FALSE, warning=FALSE, echo=FALSE}
+
+prepare_interaction_data_att1 <- function(df_input) {
+  
+  df_clean <- df_input %>%
+    filter(stim_type == "target") %>%
+    group_by(participant_id, question) %>%
+    slice(1) %>% 
+    ungroup() %>%
+    mutate(err_reported_clean = case_when(err_reported == "nanas" ~ "nans", TRUE ~ err_reported))
+  
+  df_trial_coded <- df_clean %>%
+    mutate(
+      reported_phon = if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0),
+      reported_nonphon = if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)
+    )
+
+  df_phon <- df_trial_coded %>%
+    filter(condition %in% c("phon_err", "both_err")) %>% 
+    mutate(
+      ErrorType = "Phonological", Reported = reported_phon, 
+      Context = if_else(condition == "both_err", "Dual (Both)", "Single (Alone)")
+    ) %>% select(participant_id, ErrorType, Context, Reported)
+  
+  df_nonphon <- df_trial_coded %>%
+    filter(condition %in% c("non_phon_err", "both_err")) %>% 
+    mutate(
+      ErrorType = "Non-Phonological", Reported = reported_nonphon, 
+      Context = if_else(condition == "both_err", "Dual (Both)", "Single (Alone)")
+    ) %>% select(participant_id, ErrorType, Context, Reported)
+  
+  df_long <- bind_rows(df_phon, df_nonphon)
+  df_long$Context <- factor(df_long$Context, levels = c("Single (Alone)", "Dual (Both)"))
+  
+  return(df_long)
+}
+
+
+run_masking_plot_att1 <- function(plot_data) {
+  
+  my_colors <- c("lightsalmon", "skyblue") 
+  
+  ggline(
+    plot_data, x = "Context", y = "hit_rate", color = "ErrorType",
+    add = c("mean_se", "jitter"),
+    palette = my_colors,
+    position = position_dodge(0.2), size = 1 
+  ) +
+    labs(
+      title = "The Masking Effect (1st Attempt Only)",
+      subtitle = "Does detection drop when a second error is added?",
+      y = "Hit Rate (Probability of Detection)",
+      x = NULL,
+      caption = "GLMER Result: Significant Masking (p = .012*)"
+    ) +
+    theme(
+      plot.title = element_text(face="bold", hjust=0.5),
+      legend.position = "top"
+    )
+}
+
+df_inter_att1 <- prepare_interaction_data_att1(df_clean_all_trials)
+stats_inter_att1 <- calculate_hit_rates(df_inter_att1)
+run_masking_plot_att1(stats_inter_att1)
+```
+
+
+###### First Attempt Only: Comparing current data with first pass only data 
+
+```{r batch-1-first-attemots-only-glmer-and-plots, message=FALSE, warning=FALSE, echo=FALSE}
+
+install.packages("lme4")
+install.packages("Matrix")
+
+
+
+# ==============================================================================
+# 1. LOAD DATA (Updated with Deduplication)
+# ==============================================================================
+
+load_data_b1 <- function() {
+  message("Loading Batch 1 (First Pass)...")
+  
+  # A. Find File
+  target_folder <- "../data/preprocessed/main_batch1"
+  quest_file <- list.files(target_folder, pattern = "first_pass\\.csv$", recursive = TRUE, full.names = TRUE)[1]
+  
+  if(is.na(quest_file)) stop("Could not find '*first_pass.csv' in ../data/preprocessed/main_batch1/")
+  message(paste(" -> Using Questionnaire:", basename(quest_file)))
+  
+  # B. Find Annotations
+  annotated_files <- list.files("../data/annotated/", pattern = "main_batch1.*(FB|JB|HH)\\.csv", full.names = TRUE)
+  if(length(annotated_files) == 0) stop("No annotated files found for main_batch1")
+  
+  # C. Load & Deduplicate Questionnaire
+  df_quest <- read_csv(quest_file, show_col_types = FALSE) %>% 
+    select(participant_id, question_id = stimuli_presented, answer = response_value) %>%
+    # *** FIX: Remove duplicates before pivoting ***
+    distinct(participant_id, question_id, .keep_all = TRUE) %>% 
+    pivot_wider(names_from = question_id, values_from = answer)
+  
+  # D. Load Annotations
+  df_anno <- map_dfr(annotated_files, read_csv, col_types = cols(.default = "c"), show_col_types = FALSE) %>%
+    group_by(participant_id) %>% filter(any(!is.na(coder))) %>% ungroup()
+  
+  # E. Join
+  df_joined <- df_anno %>% left_join(df_quest, by = "participant_id")
+  
+  return(df_joined)
+}
+
+# ==============================================================================
+# 2. PREPARE DATA (Same as before)
+# ==============================================================================
+
+prepare_glmer_data_b1 <- function(df_input) {
+  df_coded <- df_input %>%
+    filter(stim_type == "target") %>%
+    mutate(
+      err_reported_clean = case_when(err_reported == "nanas" ~ "nans", TRUE ~ err_reported),
+      condition = factor(condition, levels = c("correct", "phon_err", "non_phon_err", "both_err")),
+      reported_phon = if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0),
+      reported_nonphon = if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)
+    )
+  
+  df_phon <- df_coded %>%
+    mutate(ErrorType = "Phon", Reported = reported_phon, 
+           Present = if_else(condition %in% c("phon_err", "both_err"), 1, 0),
+           OtherTypePresent = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0)) %>%
+    select(participant_id, question, ErrorType, Reported, Present, OtherTypePresent)
+  
+  df_nonphon <- df_coded %>%
+    mutate(ErrorType = "NonPhon", Reported = reported_nonphon, 
+           Present = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0),
+           OtherTypePresent = if_else(condition %in% c("phon_err", "both_err"), 1, 0)) %>%
+    select(participant_id, question, ErrorType, Reported, Present, OtherTypePresent)
+  
+  df_long <- bind_rows(df_phon, df_nonphon)
+  
+  df_long$Present_c <- df_long$Present - 0.5
+  df_long$OtherTypePresent_c <- df_long$OtherTypePresent - 0.5
+  df_long$ErrorType <- factor(df_long$ErrorType, levels = c("Phon", "NonPhon"))
+  contrasts(df_long$ErrorType) <- contr.sum(2)
+  
+  return(df_long)
+}
+
+# ==============================================================================
+# 3. RUN ANALYSIS (Updated with Robust Optimizer)
+# ==============================================================================
+
+# A. Execute Load & Prep
+df_raw_b1  <- load_data_b1()
+df_long_b1 <- prepare_glmer_data_b1(df_raw_b1)
+
+# B. Run Model m1_b1 with BOBYQA
+message("Running GLMER for Batch 1 (with Bobyqa optimizer)...")
+
+m1_b1 <- glmer(
+  Reported ~ ErrorType * Present_c + ErrorType * OtherTypePresent_c + (1 | participant_id) + (1 | question),
+  data = df_long_b1 %>% filter(!(Present == 0 & OtherTypePresent == 0)), 
+  family = binomial,
+  # *** FIX: Use a stronger optimizer to handle convergence issues ***
+  control = glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 100000))
+)
+
+print("--- SUMMARY: Batch 1 (First Pass) ---")
+print(summary(m1_b1))
+
+
+
+```
 
 
 ### 2. Transcription data analysis
