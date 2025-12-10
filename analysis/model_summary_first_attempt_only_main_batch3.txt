@@ -1,0 +1,36 @@
+Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
+ Family: binomial  ( logit )
+Formula: Reported ~ ErrorType * Present_c + ErrorType * OtherTypePresent_c +      (1 | participant_id) + (1 | question)
+   Data: df_long_first_att %>% filter(!(Present == 0 & OtherTypePresent ==      0))
+
+      AIC       BIC    logLik -2*log(L)  df.resid 
+   1322.1    1365.4    -653.1    1306.1      1648 
+
+Scaled residuals: 
+    Min      1Q  Median      3Q     Max 
+-1.9778 -0.4924 -0.1393 -0.0446 14.1361 
+
+Random effects:
+ Groups         Name        Variance Std.Dev.
+ question       (Intercept) 0.6837   0.8269  
+ participant_id (Intercept) 0.4928   0.7020  
+Number of obs: 1656, groups:  question, 72; participant_id, 46
+
+Fixed effects:
+                              Estimate Std. Error z value Pr(>|z|)    
+(Intercept)                   -2.95087    0.28202 -10.463  < 2e-16 ***
+ErrorType1                     0.05769    0.22347   0.258   0.7963    
+Present_c                      3.75265    0.49975   7.509 5.96e-14 ***
+OtherTypePresent_c            -0.63826    0.25529  -2.500   0.0124 *  
+ErrorType1:Present_c           0.56017    0.46465   1.206   0.2280    
+ErrorType1:OtherTypePresent_c -0.21893    0.18953  -1.155   0.2480    
+---
+Signif. codes:  0 ‘***’ 0.001 ‘**’ 0.01 ‘*’ 0.05 ‘.’ 0.1 ‘ ’ 1
+
+Correlation of Fixed Effects:
+            (Intr) ErrrT1 Prsnt_ OthTP_ ET1:P_
+ErrorType1   0.214                            
+Present_c   -0.809 -0.248                     
+OthrTypPrs_ -0.271  0.003  0.433              
+ErrrTyp1:P_ -0.221 -0.914  0.242 -0.005       
+ErrrT1:OTP_  0.028 -0.117 -0.026 -0.042 -0.043
