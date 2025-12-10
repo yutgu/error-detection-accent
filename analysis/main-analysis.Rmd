@@ -1004,7 +1004,9 @@ run_stats_pipeline(df_clean_all_trials)
 ```
 
 
-##### trial-level GLMER
+#### trial-level GLMER
+
+##### standard GLMER with Signal Detection Framework
 
 ```{r err-detection-glmer-with-signal-detection, message=FALSE, warning=FALSE, echo=FALSE}
 
@@ -1102,7 +1104,7 @@ results <- run_glmer_sdt_analysis(df_clean_all_trials)
 summary(results$model)
 ```
 
-
+##### Bayesian GLMER with Signal Detection Framework
 ```{r err-detection-glmer-with-signal-detection-bayesian, message=FALSE, warning=FALSE, echo=FALSE}
 
 if(!require(blme)) install.packages("blme")
@@ -1159,17 +1161,17 @@ run_bayesian_glmer_diagnostics <- function(df_input) {
 
 final_output <- run_bayesian_glmer_diagnostics(df_clean_all_trials)
 
-my_model <- final_output$model
-my_data  <- final_output$data
+bayes_sdt_model <- final_output$model
+bayes_sdt_data  <- final_output$data
 
-bayes_results <- run_bayesian_glmer(df_clean_all_trials)
-summary(bayes_results)
+
+summary(bayes_sdt_model)
 
 
 # checks why non Bayesian one fails
 # very low (almost 0 false alarm rates for the Non-Phon type)
 # diagnostics
-diagnostic_table <- my_data %>%
+diagnostic_table <- bayes_sdt_data %>%
   group_by(ErrorType, Present) %>%
   summarise(
     Total_Trials = n(),
