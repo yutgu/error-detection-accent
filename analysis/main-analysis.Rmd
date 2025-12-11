@@ -111,15 +111,15 @@ dodge_amt2 <- 0.5
 
 # set the theme for graphs 
 theme_set(
-  theme_minimal(base_size = 12) +  
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
-    axis.text.y = element_text(size = 12),
-    axis.title = element_text(size = 12, face = "bold"),
-    plot.title = element_text(face = "bold", size = 14),
-    legend.title = element_text(face = "bold", size = 12),
-    legend.text = element_text(size = 12),
+  theme_minimal(base_size = 16) +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 16),
+    axis.text.y = element_text(size = 16),
+    axis.title = element_text(size = 16, face = "bold"),
+    plot.title = element_text(face = "bold", size = 16),
+    legend.title = element_text(face = "bold", size = 16),
+    legend.text = element_text(size = 16),
     legend.position = "top",
-    strip.text = element_text(size = 12, face = "bold")))
+    strip.text = element_text(size = 16, face = "bold")))
   # panel.background = element_rect(fill = "transparent")))
 ```
 
@@ -1217,7 +1217,8 @@ calculate_sdt_metrics <- function(df_long) {
   return(sdt_stats)
 }
 
-  
+
+
 run_glmer_plots <- function(sdt_data) {
   
   my_colors <- c("lightsalmon", "skyblue") 
@@ -1238,35 +1239,40 @@ run_glmer_plots <- function(sdt_data) {
     y.position = max(sdt_data$c_bias) + 0.2
   )
 
-  # sensitivity 
+  large_theme <- theme(
+    legend.position = "none",
+    plot.title = element_text(face = "bold", hjust = 0.5, size = 16),
+    plot.subtitle = element_text(size = 16),
+    axis.text.x = element_text(size = 16, face = "bold"),
+    axis.text.y = element_text(size = 16),
+    axis.title.y = element_text(size = 16, face = "bold")
+  )
+  
   p_dprime <- ggboxplot(
     sdt_data, x = "ErrorType", y = "d_prime", fill = "ErrorType", 
     palette = my_colors, add = "jitter",
     add.params = list(size = 1.5, alpha = 0.4, color = "darkgray")
   ) +
-    stat_pvalue_manual(stat_sens, label = "p.signif", tip.length = 0.01, size = 10) +
+    stat_pvalue_manual(stat_sens, label = "p.signif", tip.length = 0.02, size = 12) + 
     labs(
-      title = "Sensitivity (d') by Error Type - Two Attempts",
-      subtitle = "Standard GLMER Result: p = .017",
-      y = "Sensitivity (d')", x = NULL
+      y = "Sensitivity to Detection (d')", x = NULL
     ) +
-    theme(legend.position = "none", plot.title = element_text(face="bold", hjust=0.5))
+    large_theme 
   
-  # bias
   p_bias <- ggboxplot(
     sdt_data, x = "ErrorType", y = "c_bias", fill = "ErrorType", 
     palette = my_colors, add = "jitter",
     add.params = list(size = 1.5, alpha = 0.4, color = "darkgray")
   ) +
-    stat_pvalue_manual(stat_bias, label = "p.signif", tip.length = 0.01, size = 5) +
+    stat_pvalue_manual(stat_bias, label = "p.signif", tip.length = 0.02, size = 6) + 
     geom_hline(yintercept = 0, linetype = "dashed") + 
-    annotate("text", x = 1.5, y = 0, label = "Neutral Bias", vjust = -1, fontface="italic", size=3) +
+    annotate("text", x = 1.5, y = 0, label = "Neutral Bias", vjust = -1, fontface = "italic", size = 6) +
     labs(
-      title = "Response Bias (c) by Error Type - Two Attempts",
+      title = "Response Bias (c) - Two Attempts",
       subtitle = "Standard GLMER Result: p = .64 (ns)",
       y = "Bias (c)", x = NULL
     ) +
-    theme(legend.position = "none", plot.title = element_text(face="bold", hjust=0.5))
+    large_theme 
   
   print(p_dprime)
   print(p_bias)
@@ -1301,7 +1307,7 @@ prepare_interaction_data <- function(df_input) {
     mutate(
       ErrorType = "Phonological", 
       Reported = reported_phon, 
-      Context = if_else(condition == "both_err", "Dual (Both)", "Single (Alone)")
+      Context = if_else(condition == "both_err", "Both Error Types", "Single Error Type")
     ) %>%
     select(participant_id, ErrorType, Context, Reported)
   
@@ -1310,13 +1316,13 @@ prepare_interaction_data <- function(df_input) {
     mutate(
       ErrorType = "Non-Phonological", 
       Reported = reported_nonphon, 
-      Context = if_else(condition == "both_err", "Dual (Both)", "Single (Alone)")
+      Context = if_else(condition == "both_err", "Both Error Types", "Single Error Type")
     ) %>%
     select(participant_id, ErrorType, Context, Reported)
   
   df_long <- bind_rows(df_phon, df_nonphon)
   
-  df_long$Context <- factor(df_long$Context, levels = c("Single (Alone)", "Dual (Both)"))
+  df_long$Context <- factor(df_long$Context, levels = c("Single Error Type", "Both Error Types"))
   
   return(df_long)
 }
@@ -1344,16 +1350,19 @@ run_masking_plot <- function(plot_data) {
     size = 1 
   ) +
     labs(
-      title = "The Masking Effect (Both Attempts)",
-      subtitle = "Does detection drop when a second error is added?\n(Downward slope = Masking)",
-      y = "Hit Rate (Probability of Detection)",
-      x = NULL,
-      caption = "GLMER Result: Marginal Masking Trend (p = .064)"
+      y = "Detection Rate",
+      x = NULL
     ) +
     theme(
-      plot.title = element_text(face="bold", hjust=0.5),
+      plot.title = element_text(face = "bold", hjust = 0.5, size = 16),
+      plot.subtitle = element_text(size = 16),
+      axis.title.y = element_text(face = "bold", size = 16),
+      axis.text.x = element_text(size = 16, face = "bold"),
+      axis.text.y = element_text(size = 16),
       legend.position = "top",
-      legend.text = element_text(size=12)
+      legend.title = element_text(face = "bold", size = 16),
+      legend.text = element_text(size = 16),
+      plot.caption = element_text(size = 16, hjust = 1) 
     )
 }
 
