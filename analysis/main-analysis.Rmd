@@ -1476,7 +1476,6 @@ run_plots_attempt1(sdt_metrics_att1)
 
 
 ```{r sdt-glmer-plots-first-attempt-only-interaction, message=FALSE, warning=FALSE, echo=FALSE}
-
 prepare_interaction_data_att1 <- function(df_input) {
   
   df_clean <- df_input %>%
@@ -1540,6 +1539,262 @@ run_masking_plot_att1 <- function(plot_data) {
 df_inter_att1 <- prepare_interaction_data_att1(df_clean_all_trials)
 stats_inter_att1 <- calculate_hit_rates(df_inter_att1)
 run_masking_plot_att1(stats_inter_att1)
+```
+
+#### Visualizing first vs. combined attempts side by side
+
+```{r sdt-glmer-plots-first-second-attempts-side-by-side, message=FALSE, warning=FALSE, echo=FALSE}
+
+calc_dprime_generic <- function(df_slice, label_name) {
+  df_slice %>%
+    group_by(participant_id, ErrorType) %>%
+    summarise(
+      hits = sum(Reported == 1 & IsSignal == 1),
+      misses = sum(Reported == 0 & IsSignal == 1),
+      fas = sum(Reported == 1 & IsSignal == 0),
+      crs = sum(Reported == 0 & IsSignal == 0),
+      hit_rate = (hits + 0.5) / (hits + misses + 1),
+      fa_rate = (fas + 0.5) / (fas + crs + 1),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      d_prime = qnorm(hit_rate) - qnorm(fa_rate),
+      Attempt = label_name
+    )
+}
+
+# attempt 1 
+df_att1_raw <- df_clean_all_trials %>%
+  filter(stim_type == "target") %>%
+  group_by(participant_id, question) %>%
+  slice(1) %>% ungroup() %>%
+  mutate(err_reported_clean = case_when(err_reported == "nanas" ~ "nans", TRUE ~ err_reported))
+
+df_att1_coded <- df_att1_raw %>%
+  mutate(
+    reported_phon = if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0),
+    reported_nonphon = if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)
+  )
+
+# long formatted attempt 1 
+df_long_att1 <- bind_rows(
+  df_att1_coded %>% mutate(ErrorType = "Phonological", Reported = reported_phon, IsSignal = if_else(condition %in% c("phon_err", "both_err"), 1, 0)),
+  df_att1_coded %>% mutate(ErrorType = "Non-Phonological", Reported = reported_nonphon, IsSignal = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0))
+) %>% select(participant_id, ErrorType, IsSignal, Reported)
+
+# combined attempts
+df_comb_raw <- df_clean_all_trials %>%
+  filter(stim_type == "target") %>%
+  mutate(err_reported_clean = case_when(err_reported == "nanas" ~ "nans", TRUE ~ err_reported)) %>%
+  group_by(participant_id, question, condition) %>%
+  summarise(
+    reported_phon = max(if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0)),
+    reported_nonphon = max(if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)),
+    .groups = "drop"
+  )
+
+# long formatted combined attempts
+df_long_comb <- bind_rows(
+  df_comb_raw %>% mutate(ErrorType = "Phonological", Reported = reported_phon, IsSignal = if_else(condition %in% c("phon_err", "both_err"), 1, 0)),
+  df_comb_raw %>% mutate(ErrorType = "Non-Phonological", Reported = reported_nonphon, IsSignal = if_else(condition %in% c("non_phon_err", "both_err"), 1, 0))
+) %>% select(participant_id, ErrorType, IsSignal, Reported)
+
+dprime_att1 <- calc_dprime_generic(df_long_att1, "Attempt 1")
+dprime_comb <- calc_dprime_generic(df_long_comb, "Combined (Attempts 1 & 2)")
+master_dprime <- bind_rows(dprime_att1, dprime_comb)
+master_dprime$Attempt <- factor(master_dprime$Attempt, levels = c("Attempt 1", "Combined (Attempts 1 & 2)"))
+
+
+stat_pvals <- tibble(
+  Attempt = c("Attempt 1", "Combined (Attempts 1 & 2)"),
+  group1 = "Phonological",
+  group2 = "Non-Phonological",
+  p.adj = c("p = .23 (ns)", "p = .017 *"),
+  y.position = c(4.2, 4.2),
+  
+  xmin = c(0.8, 1.8),
+  xmax = c(1.2, 2.2)  
+)
+
+p_sensitivity_combined <- ggplot(master_dprime, aes(x = Attempt, y = d_prime, fill = ErrorType)) +
+  
+  geom_boxplot(position = position_dodge(0.8), outlier.shape = NA, alpha = 0.8) +
+
+  geom_point(
+    aes(fill = ErrorType), 
+    position = position_jitterdodge(jitter.width = 0.2, dodge.width = 0.8),
+    size = 1, alpha = 0.4, color = "darkgray", show.legend = FALSE
+  ) +
+  
+  stat_pvalue_manual(
+    stat_pvals, 
+    label = "p.adj", 
+    y.position = "y.position",
+    xmin = "xmin", 
+    xmax = "xmax", 
+    tip.length = 0.01, 
+    size = 5, 
+    bracket.size = 0.8,
+    inherit.aes = FALSE
+  ) +
+  
+  scale_fill_manual(values = c("lightsalmon", "skyblue")) +
+  scale_y_continuous(limits = c(-1, 5), breaks = seq(-1, 4, 1)) +
+  labs(
+    y = "Sensitivity to Detection (d')", x = NULL
+  ) +
+  theme_pubr() + 
+  theme(
+  legend.position = "top",
+    text = element_text(size = 16),
+    legend.text = element_text(size = 16),
+    plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+    axis.text = element_text(size = 16),
+    axis.title = element_text(size = 16, face = "bold")
+  )
+
+print(p_sensitivity_combined)
+
+
+
+```
+
+
+```{r sdt-glmer-plots-first-second-attempts-side-by-side-masking-effect, message=FALSE, warning=FALSE, echo=FALSE}
+
+
+# attempt 1
+prepare_interaction_data_att1 <- function(df_input) {
+  df_clean <- df_input %>%
+    filter(stim_type == "target") %>%
+    group_by(participant_id, question) %>%
+    slice(1) %>%  
+    ungroup() %>%
+    mutate(err_reported_clean = case_when(err_reported == "nanas" ~ "nans", TRUE ~ err_reported))
+  
+  df_trial_coded <- df_clean %>%
+    mutate(
+      reported_phon = if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0),
+      reported_nonphon = if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)
+    )
+  
+  df_phon <- df_trial_coded %>%
+    filter(condition %in% c("phon_err", "both_err")) %>% 
+    mutate(
+      ErrorType = "Phonological", Reported = reported_phon, 
+      Context = if_else(condition == "both_err", "Both Error Types", "Single Error Type")
+    ) %>% select(participant_id, ErrorType, Context, Reported)
+  
+  df_nonphon <- df_trial_coded %>%
+    filter(condition %in% c("non_phon_err", "both_err")) %>% 
+    mutate(
+      ErrorType = "Non-Phonological", Reported = reported_nonphon, 
+      Context = if_else(condition == "both_err", "Both Error Types", "Single Error Type")
+    ) %>% select(participant_id, ErrorType, Context, Reported)
+  
+  df_long <- bind_rows(df_phon, df_nonphon)
+  df_long$Context <- factor(df_long$Context, levels = c("Single Error Type", "Both Error Types"))
+  return(df_long)
+}
+
+# combined attempts
+prepare_interaction_data_comb <- function(df_input) {
+  df_clean <- df_input %>%
+    filter(stim_type == "target") %>%
+    mutate(err_reported_clean = case_when(err_reported == "nanas" ~ "nans", TRUE ~ err_reported))
+  
+  df_trial_coded <- df_clean %>%
+    group_by(participant_id, question, condition) %>%
+    summarise(
+      reported_phon = max(if_else(err_reported_clean == "y" & err_type_response %in% c("p", "p?", "both"), 1, 0)),
+      reported_nonphon = max(if_else(err_reported_clean == "y" & err_type_response %in% c("np", "np?", "both"), 1, 0)),
+      .groups = "drop"
+    )
+  
+  df_phon <- df_trial_coded %>%
+    filter(condition %in% c("phon_err", "both_err")) %>% 
+    mutate(
+      ErrorType = "Phonological", Reported = reported_phon, 
+      Context = if_else(condition == "both_err", "Both Error Types", "Single Error Type")
+    ) %>% select(participant_id, ErrorType, Context, Reported)
+  
+  df_nonphon <- df_trial_coded %>%
+    filter(condition %in% c("non_phon_err", "both_err")) %>% 
+    mutate(
+      ErrorType = "Non-Phonological", Reported = reported_nonphon, 
+      Context = if_else(condition == "both_err", "Both Error Types", "Single Error Type")
+    ) %>% select(participant_id, ErrorType, Context, Reported)
+  
+  df_long <- bind_rows(df_phon, df_nonphon)
+  df_long$Context <- factor(df_long$Context, levels = c("Single Error Type", "Both Error Types"))
+  return(df_long)
+}
+
+calculate_hit_rates <- function(df_long, attempt_label) {
+  df_long %>%
+    group_by(participant_id, ErrorType, Context) %>%
+    summarise(
+      hit_rate = mean(Reported), 
+      .groups = "drop"
+    ) %>%
+    mutate(Attempt = attempt_label)
+}
+
+
+df_raw_att1 <- prepare_interaction_data_att1(df_clean_all_trials)
+df_raw_comb <- prepare_interaction_data_comb(df_clean_all_trials)
+
+stats_att1 <- calculate_hit_rates(df_raw_att1, "Attempt 1")
+stats_comb <- calculate_hit_rates(df_raw_comb, "Combined (Attempts 1 & 2)")
+
+
+master_hits <- bind_rows(stats_att1, stats_comb)
+master_hits$Attempt <- factor(master_hits$Attempt, levels = c("Attempt 1", "Combined (Attempts 1 & 2)"))
+
+
+large_text_theme <- theme(
+  text = element_text(size = 16),
+  plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+  axis.title = element_text(face = "bold", size = 16),
+  axis.text = element_text(size = 16, color = "black"),
+  legend.title = element_text(face = "bold", size = 16),
+  legend.text = element_text(size = 16),
+  strip.text = element_text(face = "bold", size = 16)
+)
+
+stat_masking <- tibble(
+  Attempt = c("Attempt 1", "Combined (Attempts 1 & 2)"),
+  group1 = "Single Error Type",
+  group2 = "Both Error Types",
+  p.adj = c("p = .012 *", "p = .064 (ns)"),
+  y.position = c(1.05, 1.05) 
+)
+
+
+p_masking_side_by_side <- ggline(
+  master_hits, x = "Context", y = "hit_rate", color = "ErrorType",
+  facet.by = "Attempt", 
+
+  add = c("mean_se", "jitter"), 
+  
+  palette = c("lightsalmon", "skyblue"),
+  position = position_dodge(0.2), 
+  size = 1.2,
+  add.params = list(size = 1.5, alpha = 0.4) 
+) +
+  stat_pvalue_manual(
+    stat_masking, label = "p.adj", 
+    tip.length = 0.01, size = 5, bracket.size = 0.8
+  ) +
+  scale_y_continuous(limits = c(0, 1.15), breaks = seq(0, 1, 0.25)) +
+  labs(
+    y = "Detection Rate", 
+    x = NULL
+  ) +
+  large_text_theme + 
+  theme(legend.position = "top")
+
+print(p_masking_side_by_side)
 ```
 
 
@@ -1877,7 +2132,6 @@ run_appendix_plots <- function(df_input) {
     )
   
   print(p_sentences)
-  # if(!is.null(p_fam)) print(p_fam)
   print(p_keywords)
 
 }
