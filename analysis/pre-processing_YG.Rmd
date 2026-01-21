@@ -944,3 +944,27 @@ df_err_main_batch3_48subj_att_top <- df_err_main_batch3_48subj %>%
 # when we ask RAs to code the response
 write_csv(df_err_main_batch3_48subj_att_top, file.path(output_dir, "48subj_err_detection_attcheck_top.csv"))
 ```
+
+
+```{r demographics-summary, echo=FALSE, warning=FALSE, message=FALSE}
+
+file_list <- dir_ls(path = "../data/demographic", glob = "*.csv")
+
+process_file <- function(file_path) {
+  read_csv(file_path, show_col_types = FALSE) %>%
+    filter(Status == "APPROVED") %>% 
+    select(
+      gender = Sex, 
+      race = `Ethnicity simplified`, 
+      age = Age
+    ) %>%
+    mutate(ethnicity = race) 
+}
+
+df_all_demo <- map(file_list, process_file) %>% list_rbind()
+
+
+write_csv(df_all_demo, "../data/demographic/combined_demographics.csv")
+
+```
+
