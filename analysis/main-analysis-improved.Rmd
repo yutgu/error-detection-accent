@@ -596,8 +596,6 @@ master_sdt <- bind_rows(
 
 
 ```{r fig1-sensitivity, fig.width=10, fig.height=7, message=FALSE, warning=FALSE, echo=FALSE}
-
-# POSTER FIGURE 1 — Sensitivity (d') by Error Type and Attempt
 # Key finding: No difference on Attempt 1; Non-Phon > Phon on Combined Attempts
 
 p_att1_dprime <- extract_pval(m1_att1, "ErrorType1:Present_c")
@@ -630,7 +628,7 @@ p1 <- ggplot(
   geom_jitter(
     width       = 0.12,
     size        = 2.0,
-    alpha       = 0.40,
+    alpha       = 0.30,
     color       = "grey25",
     show.legend = FALSE
   ) +
@@ -639,7 +637,7 @@ p1 <- ggplot(
     label        = "p_label",
     y.position   = "y.position",
     tip.length   = 0.015,
-    size         = 5.5,
+    size         = 8,              
     bracket.size = 0.7,
     inherit.aes  = FALSE
   ) +
@@ -663,24 +661,34 @@ p1 <- ggplot(
     )
   ) +
   labs(
-    title    = "Sensitivity to Error Detection",
-    subtitle = "Q1: Are phonological and non-phonological errors equally detectable?",
+    title    = NULL,                                       
+    subtitle = NULL,                                          
     y        = "Sensitivity  (d\u2019)",
     x        = NULL,
     fill     = "Error Type",
     caption  = "p-value: ErrorType \u00d7 Present interaction from GLMER  |  d\u2019 = 0: chance"
   ) +
-  guides(fill = guide_legend(override.aes = list(alpha = 1)))
+  guides(fill = guide_legend(override.aes = list(alpha = 1))) +
+  theme(
+    legend.position    = "top",                               
+    legend.text        = element_text(size = 25),            
+    legend.title       = element_text(size = 25, face = "bold"),
+    legend.key.size    = unit(1.2, "cm"),
+    axis.title.y       = element_text(size = 25),
+    axis.text          = element_text(size = 25),
+    strip.text         = element_text(size = 25, face = "bold"), 
+    plot.caption       = element_text(size = 20, hjust = 0.5)    
+  )
 
 p1
 
-# ggsave("figure1_sensitivity_main_batch3.tiff", p1, width = 10, height = 7, dpi = 300)
+
+ggsave("figure1_sensitivity_main_batch3.tiff", p1, width = 10, height = 6, dpi = 600)
 ```
 
 
 ```{r fig2-masking, fig.width=11, fig.height=7, message=FALSE, warning=FALSE, echo=FALSE}
 
-# POSTER FIGURE 2 — Masking Effect
 # Key finding: When a second error is added, detection of the first drops
 # (significantly on Attempt 1; alleviated on Combined Attempts)
 
@@ -786,7 +794,7 @@ p2 <- ggplot(mask_means,
     label        = "p_label",
     y.position   = "y.position",
     tip.length   = 0.015,
-    size         = 5.2,
+    size         = 8,
     bracket.size = 0.7,
     inherit.aes  = FALSE
   ) +
@@ -805,8 +813,6 @@ p2 <- ggplot(mask_means,
                                "Both Error Types"  = "Both\nError Types")) +
 
   labs(
-    title    = "Resource Competition: The Masking Effect",
-    subtitle = "Q2: Does adding a second error lower detection of the first?",
     y        = "Detection Rate",
     x        = NULL,
     color    = "Error Type",
@@ -816,11 +822,21 @@ p2 <- ggplot(mask_means,
   guides(
     color = guide_legend(override.aes = list(alpha = 1, size = 5)),
     fill  = "none"
+  ) +
+  theme(
+    legend.position    = "top",                               
+    legend.text        = element_text(size = 25),            
+    legend.title       = element_text(size = 25, face = "bold"),
+    legend.key.size    = unit(1.2, "cm"),
+    axis.title.y       = element_text(size = 25),
+    axis.text          = element_text(size = 25),
+    strip.text         = element_text(size = 25, face = "bold"), 
+    plot.caption       = element_text(size = 20, hjust = 0.5)    
   )
 
 p2
 
-# ggsave("figure2_masking_main_batch3.tiff", p2, width = 11, height = 7, dpi = 300)
+ggsave("figure2_masking_main_batch3.tiff", p2, width = 12, height = 6, dpi = 600)
 ```
 
 

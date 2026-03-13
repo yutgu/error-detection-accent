@@ -1,7 +1,6 @@
 Generalized linear mixed model fit by maximum likelihood (Laplace Approximation) ['glmerMod']
  Family: binomial  ( logit )
-Formula: Reported ~ ErrorType * Present_c + ErrorType * OtherTypePresent_c +  
-    (1 | participant_id) + (1 | question)
+Formula: Reported ~ ErrorType * Present_c + ErrorType * OtherTypePresent_c +      (1 | participant_id) + (1 | question)
    Data: df_long %>% filter(!(Present == 0 & OtherTypePresent == 0))
 
       AIC       BIC    logLik -2*log(L)  df.resid 
