@@ -7,28 +7,19 @@
 # 2. Un-ignore the .gitignore file itself
 !.gitignore
 
-# 3. Un-ignore the .Rproj file (keep the project file, ignore the user settings folder)
+# 3. Un-ignore the .Rproj file (keep the project file, ignore user settings)
 !*.Rproj
 
-# 4. Un-ignore the 'analysis' folder
+# 4. Un-ignore key project folders
 !analysis/
 !analysis/**
-# BUT re-ignore the user settings inside it:
-analysis/.Rproj.user/
-
-# 5. Un-ignore the 'data' folder
 !data/
 !data/**
-
-# 6. Un-ignore the 'annotated' folder
 !annotated/
 !annotated/**
 
-# 7. Globally re-ignore specific files
+# 5. Re-ignore temporary files, local user settings, and heavy image binaries
 .Rhistory
-<<<<<<< HEAD
 .Rproj.user
-=======
-
-analysis/main-analysis.html
->>>>>>> c7f0bf501bf23dae7de513d0d0c7bd1bb8e54508
+analysis/.Rproj.user/
+*.tiff
