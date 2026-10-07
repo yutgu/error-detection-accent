@@ -1,766 +1,687 @@
 ---
-title: "main-analysis — Improved for Poster"
-author: "YG"
+title: "Experiment 1: Error Detection in Spanish-Accented English"
+subtitle: "Comprehensive Main Analysis"
+author: "Yuting Gu"
 date: "`r Sys.Date()`"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
 ---
 
-```{r setup, include=TRUE}
-knitr::opts_chunk$set(echo = TRUE,
-                      fig.align = "center",
-                      fig.width  = 12,
-                      fig.height = 7,
-                      dev = "png",
-                      dpi = 300,          
-                      message = FALSE,
-                      warning = FALSE,
-                      error   = TRUE,
-                      cache   = FALSE,
-                      include = TRUE)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo    = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  fig.width  = 10,
+  fig.height = 6
+)
 
-options(repos = c(CRAN = "https://cloud.r-project.org"))
-```
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(scales)
+library(rstatix)
+library(ggpubr)
+library(patchwork)
+library(Hmisc)
+library(tidytext)
 
+# Color palette
+COL_PHON    <- "#E07B3F"
+COL_NONPHON <- "#2B7BB9"
+COL_CORRECT <- "#57A75C"
+COL_BOTH    <- "#9B6EBD"
 
-```{r libraries, echo=FALSE, include=FALSE}
-rm(list = ls())
+error_colors <- c("Phonological" = COL_PHON, "Non-Phonological" = COL_NONPHON)
 
-library(insight); library(report); library(tidyverse); library(magrittr)
-library(Matrix); library(lme4); library(lmerTest); library(reshape2)
-library(ggrepel); library(gridExtra); library(cowplot); library(forcats)
-library(plotly); library(usmap); library(sjPlot); library(stringr)
-library(car); library(digest); library(ggbeeswarm); library(Hmisc)
-library(pwr); library(scales); library(tidytext); library(rstatix)
-library(ggpubr); library(knitr)
-```
-
-```{r constants, echo=FALSE, include=FALSE}
-dodge_amt  <- 0.9
-dodge_amt2 <- 0.5
-
-poster_theme <- theme_classic(base_size = 20) +
+# Poster-friendly theme
+theme_set(theme_bw(base_size = 16) +
   theme(
-    # axes
-    axis.text        = element_text(size = 18, color = "black"),
-    axis.title       = element_text(size = 20, face = "bold"),
-    axis.line        = element_line(color = "black", linewidth = 0.6),
-    # titles
-    plot.title       = element_text(size = 22, face = "bold", hjust = 0.5,
-                                    margin = margin(b = 6)),
-    plot.subtitle    = element_text(size = 16, hjust = 0.5, color = "grey35",
-                                    margin = margin(b = 10)),
-    plot.caption     = element_text(size = 14, hjust = 1, color = "grey45"),
-    # legend
-    legend.position  = "top",
-    legend.title     = element_text(size = 18, face = "bold"),
-    legend.text      = element_text(size = 17),
-    legend.key.size  = unit(1.2, "lines"),
-    # facets
-    strip.text       = element_text(size = 18, face = "bold"),
-    strip.background = element_rect(fill = "grey94", color = NA),
-    # light horizontal gridlines only
-    panel.grid.major.y = element_line(color = "grey90", linewidth = 0.4),
+    panel.grid.minor = element_blank(),
     panel.grid.major.x = element_blank(),
-    panel.grid.minor   = element_blank()
-  )
-
-theme_set(poster_theme)
-
-COL_PHON    <- "#E07B3F"   
-COL_NONPHON <- "#2B7BB9"   
-COL_CORRECT <- "#57A75C"   
-COL_BOTH    <- "#9B6EBD"   
-
-error_colors   <- c("Phonological"     = COL_PHON,
-                    "Non-Phonological" = COL_NONPHON)
-
-condition_colors <- c("correct"      = COL_CORRECT,
-                      "phon_err"     = COL_PHON,
-                      "non_phon_err" = COL_NONPHON,
-                      "both_err"     = COL_BOTH)
-```
-
-
-### 1. Error-detection data
-
-```{r error-detection-data-cleaning-pipeline, message=FALSE, warning=FALSE, echo=FALSE}
-clean_questionnaire_robust <- function(file_path) {
-  df_raw    <- read_csv(file_path, show_col_types = FALSE)
-  df_subset <- df_raw %>%
-    select(participant_id,
-           question_id = stimuli_presented,
-           answer      = response_value)
-  df_wide <- df_subset %>%
-    pivot_wider(names_from = question_id, values_from = answer)
-  df_wide %>%
-    rename_with(~ paste0("quest_", .), .cols = -participant_id)
-}
-
-process_batch_error_detection <- function(batch_pattern, batch_label, folder_name) {
-  message(paste("Processing:", batch_label, "..."))
-
-  annotated_files <- list.files(
-    path = "../data/annotated/",
-    pattern = paste0(batch_pattern, ".*(FB|JB|HH)\\.csv"),
-    full.names = TRUE
-  )
-  if (length(annotated_files) == 0) {
-    warning(paste("  ! Skipping", batch_label, "- No annotated files found."))
-    return(NULL)
-  }
-
-  target_folder <- file.path("../data/preprocessed", folder_name)
-  quest_file    <- list.files(path = target_folder, pattern = "questionnaire_data.csv",
-                               recursive = TRUE, full.names = TRUE)[1]
-  if (is.na(quest_file)) {
-    warning(paste("  ! Skipping", batch_label, "- No questionnaire found."))
-    return(NULL)
-  }
-
-  df_exp <- map_dfr(annotated_files, read_csv,
-                    col_types = cols(.default = "c"), show_col_types = FALSE) %>%
-    distinct()
-
-  df_exp <- df_exp %>%
-    group_by(participant_id) %>%
-    filter(any(!is.na(coder))) %>%
-    ungroup()
-
-  df_exp <- df_exp %>%
-    mutate(
-      comments         = as.character(comments),
-      attention_score_8 = as.numeric(str_extract(comments, "(?<=\\()\\d+(?=\\/8)")),
-      attention_score_7 = as.numeric(str_extract(comments, "(?<=\\()\\d+(?=\\/7)"))
-    )
-
-  failed_ids <- unique(c(
-    df_exp %>% filter(attention_score_8 <  6)  %>% pull(participant_id),
-    df_exp %>% filter(attention_score_7 <= 4)  %>% pull(participant_id)   # was == 4
+    strip.background = element_rect(fill = "grey95"),
+    legend.position = "top"
   ))
 
-
-  df_exp <- df_exp %>%
-    mutate(attention_check_passed = !participant_id %in% failed_ids)
-
-  df_quest_clean <- clean_questionnaire_robust(quest_file)
-
-  df_exp %>%
-    left_join(df_quest_clean, by = "participant_id") %>%
-    mutate(batch_id = batch_label)
+# Formatting helpers
+fmt_p <- function(p) {
+  if (p < .001) "p < .001"
+  else if (p < .01) sprintf("p = %.3f", p)
+  else sprintf("p = %.2f", p)
 }
 
-batch_manifest <- tribble(
-  ~batch_pattern, ~batch_label, ~folder_name,
-  "batch3",       "Batch 3",    "main_batch3"
-)
-
-df_raw_joined    <- pmap_dfr(batch_manifest, process_batch_error_detection)
-df_clean_all_trials <- df_raw_joined %>%
-  filter(attention_check_passed == TRUE) %>%
-  distinct()
-
-n_parts <- n_distinct(df_clean_all_trials$participant_id)
-print(paste("Unique Participants (Passed):", n_parts))
-
-df_analysis_targets <- df_clean_all_trials %>%
-  filter(stim_type == "target") %>%
-  mutate(
-    err_reported_clean = if_else(err_reported == "nanas", "nans", err_reported),
-    condition = factor(condition,
-                       levels = c("correct", "phon_err", "non_phon_err", "both_err")),
-    err_reported_label = case_when(
-      err_reported_clean == "nans" ~ "Question has no errors",
-      err_reported_clean == "nun"  ~ "Unsure",
-      err_reported_clean == "y"    ~ "Question needs correction"
-    ),
-    attempt_label = case_when(
-      err_reported_attempt == "first"   ~ "First Attempt",
-      err_reported_attempt == "secsame" ~ "Second Attempt (Same/Skip)",
-      err_reported_attempt == "secdiff" ~ "Second Attempt (Changed)",
-      TRUE                              ~ err_reported_attempt
-    )
-  ) %>%
-  filter(err_reported_clean %in% c("y", "nans", "nun"))
+extract_pval <- function(model, term) {
+  coefs <- summary(model)$coefficients
+  if (term %in% rownames(coefs)) coefs[term, "Pr(>|z|)"]
+  else NA_real_
+}
 ```
 
 
-#### 1.1 Exploratory / descriptive plots
+# 1. Data Loading & Exclusions
 
-```{r exploratory-plots, message=FALSE, warning=FALSE, echo=FALSE}
-run_plotting_pipeline <- function(df_input) {
+```{r data-loading}
+process_batch_error_detection <- function(file_prefix, group_label,
+                                           batch_label, has_questionnaire) {
+  annotated_dir <- "../data/annotated"
 
-  error_type_labels <- c(
-    "p"          = "Phon (Intended)",
-    "p?"         = "Phon (Uncertain)",
-    "np"         = "Non-Phon (Intended)",
-    "np?"        = "Non-Phon (Uncertain)",
-    "both"       = "Both Intended",
-    "acheckp"    = "Attn Check (Pass)",
-    "acheckf"    = "Attn Check (Fail)",
-    "otherp"     = "Other Phon",
-    "othernp"    = "Other Non-Phon",
-    "otherfill"  = "Filler Error",
-    "otherirr"   = "Style/Conciseness",
-    "otherwrong" = "Wrong/Typo",
-    "other"      = "Other"
-  )
-
-  df_input <- df_input %>%
-    group_by(participant_id) %>%
-    mutate(trial_num_sequential = match(question, unique(question))) %>%
-    ungroup()
-
-  df_analysis <- df_input %>%
-    filter(stim_type == "target") %>%
-    mutate(
-      err_reported_clean = if_else(err_reported == "nanas", "nans", err_reported),
-      condition = factor(condition,
-                         levels = c("correct", "phon_err", "non_phon_err", "both_err")),
-      err_reported_label = case_when(
-        err_reported_clean == "nans" ~ "Question has no errors",
-        err_reported_clean == "nun"  ~ "Unsure",
-        err_reported_clean == "y"    ~ "Question needs correction"
-      ),
-      attempt_label = case_when(
-        agrepl("first",   err_reported_attempt, max.distance = 1) ~ "First Attempt",
-        agrepl("secsame", err_reported_attempt, max.distance = 2) ~ "Second Attempt (Same/Skip)",
-        agrepl("secdiff", err_reported_attempt, max.distance = 2) ~ "Second Attempt (Changed)",
-        TRUE ~ err_reported_attempt
-      ),
-      accuracy_label = case_when(
-        no_err_response == "a"       ~ "Accurate",
-        no_err_response == "w"       ~ "Wrong",
-        no_err_response == "blank"   ~ "Blank",
-        no_err_response == "corrected" ~ "Corrected",
-        no_err_response == "twice"   ~ "Same Response Twice",
-        TRUE ~ "Other"
-      )
-    ) %>%
-    filter(err_reported_clean %in% c("y", "nans", "nun"))
-
-  df_trial_level <- df_analysis %>%
-    group_by(participant_id, question, condition) %>%
-    summarise(
-      is_reported      = any(err_reported_clean == "y"),
-      detected_phon    = any(err_reported_clean == "y" &
-                               err_type_response %in% c("p", "p?", "both")),
-      detected_nonphon = any(err_reported_clean == "y" &
-                               err_type_response %in% c("np", "np?", "both")),
-      final_label = case_when(
-        any(err_reported_clean == "y")    ~ "Question needs correction",
-        any(err_reported_clean == "nun")  ~ "Unsure",
-        TRUE ~ "Question has no errors"
-      ),
-      trial_num = first(trial_num_sequential),
-      .groups = "drop"
-    )
-
-  # (A) Was an error reported?
-  plot_summary_A <- df_trial_level %>%
-    count(participant_id, condition, final_label) %>%
-    complete(participant_id, condition, final_label, fill = list(n = 0)) %>%
-    group_by(participant_id, condition) %>%
-    mutate(Total = sum(n), Prop = n / Total) %>%
-    ungroup() %>%
-    group_by(condition, final_label) %>%
-    summarise(Mean = mean(Prop, na.rm = TRUE),
-              SE   = sd(Prop, na.rm = TRUE) / sqrt(n()),
-              .groups = "drop") %>%
-    mutate(ymin = Mean - SE, ymax = Mean + SE,
-           err_reported_label = final_label)
-
-  pA <- ggplot(plot_summary_A,
-               aes(x = condition, y = Mean,
-                   fill = err_reported_label, ymin = ymin, ymax = ymax)) +
-    geom_col(position = position_dodge(0.9), color = "white", width = 0.8) +
-    geom_errorbar(position = position_dodge(0.9), width = 0.22,
-                  color = "grey30", linewidth = 0.7) +
-    scale_fill_brewer(palette = "Set2") +
-    scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
-    scale_x_discrete(labels = c("correct"      = "Correct",
-                                "phon_err"     = "Phonological",
-                                "non_phon_err" = "Non-Phon",
-                                "both_err"     = "Both")) +
-    labs(x = NULL, y = "Proportion of Responses",
-         fill  = "Participant Response",
-         title = "Did participants report an error?") +
-    guides(fill = guide_legend(nrow = 1))
-
-  # (B) Hit Rate 
-  plot_data_B <- df_trial_level %>%
-    filter(condition != "correct") %>%
-    group_by(condition) %>%
-    summarise(
-      phon_mean    = mean(detected_phon),
-      phon_se      = sd(detected_phon) / sqrt(n()),
-      nonphon_mean = mean(detected_nonphon),
-      nonphon_se   = sd(detected_nonphon) / sqrt(n()),
-      .groups = "drop"
-    ) %>%
-    pivot_longer(cols = -condition,
-                 names_to  = c("Type", ".value"),
-                 names_pattern = "(.*)_(.*)") %>%
-    filter(
-      (condition == "phon_err"     & Type == "phon")    |
-      (condition == "non_phon_err" & Type == "nonphon") |
-       condition == "both_err"
-    ) %>%
-    mutate(Type_label = if_else(Type == "phon", "Phonological", "Non-Phonological"))
-
-  pB <- ggplot(plot_data_B, aes(x = condition, y = mean, fill = Type_label)) +
-    geom_col(position = position_dodge(0.85), color = "white", width = 0.75) +
-    geom_errorbar(aes(ymin = mean - se, ymax = mean + se),
-                  position = position_dodge(0.85), width = 0.22,
-                  color = "grey30", linewidth = 0.7) +
-    scale_fill_manual(values = error_colors) +
-    scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
-    scale_x_discrete(labels = c("phon_err"     = "Phonological",
-                                "non_phon_err" = "Non-Phon",
-                                "both_err"     = "Both")) +
-    labs(x = NULL, y = "Detection Rate", fill = "Error Type",
-         title = "Hit Rate: Did participants detect the intended error(s)?")
-
-  # (C) When was the error reported? 
-  plot_data_C <- df_analysis %>%
-    filter(err_reported_clean == "y", !is.na(attempt_label)) %>%
-    mutate(
-      reported_category = case_when(
-        err_type_response %in% c("p",  "p?") ~ "Phonological",
-        err_type_response %in% c("np", "np?") ~ "Non-Phonological",
-        err_type_response == "both" ~ "Both",
-        TRUE ~ NA_character_
-      ),
-      attempt_group = case_when(
-        attempt_label %in% c("First Attempt",
-                              "Second Attempt (Same/Skip)") ~ "First / Unchanged",
-        attempt_label == "Second Attempt (Changed)"         ~ "Changed on 2nd Attempt",
-        TRUE ~ NA_character_
-      )
-    ) %>%
-    filter(!is.na(reported_category), !is.na(attempt_group))
-
-  pC <- ggplot(plot_data_C, aes(x = reported_category, fill = attempt_group)) +
-    geom_bar(position = "fill", color = "white", width = 0.7) +
-    scale_fill_manual(values = c("First / Unchanged"       = "#7ABECC",
-                                 "Changed on 2nd Attempt"  = "#F4A261")) +
-    scale_y_continuous(labels = percent_format()) +
-    labs(x = "Reported Error Type", y = "Proportion",
-         fill  = "Response Status",
-         title = "When are errors reported?",
-         subtitle = "Proportion of 'first/unchanged' vs. 'changed on 2nd attempt'")
-
-  # (D) Accuracy when no error reported 
-  plot_data_D <- df_analysis %>%
-    filter(err_reported_clean == "nans", !is.na(accuracy_label),
-           accuracy_label != "Other") %>%
-    group_by(condition) %>%
-    summarise(accuracy_prop = mean(accuracy_label == "Accurate"), .groups = "drop")
-
-  pD <- ggplot(plot_data_D, aes(x = condition, y = accuracy_prop)) +
-    geom_col(fill = "grey65", color = "white", width = 0.7) +
-    scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
-    scale_x_discrete(labels = c("correct"      = "Correct",
-                                "phon_err"     = "Phonological",
-                                "non_phon_err" = "Non-Phon",
-                                "both_err"     = "Both")) +
-    labs(x = NULL, y = "Accuracy Proportion",
-         title = "Trivia accuracy when NO error was reported")
-
-  # (E) Error breakdown
-  data_E <- df_analysis %>%
-    filter(err_reported_clean == "y",
-           !is.na(err_type_response), err_type_response != "NA") %>%
-    filter(
-      !(condition == "phon_err"     & err_type_response %in% c("np", "np?", "both")),
-      !(condition == "non_phon_err" & err_type_response %in% c("p",  "p?",  "both"))
-    )
-
-  condition_totals <- data_E %>%
-    filter(condition != "correct") %>%
-    count(condition, name = "total_n_condition")
-
-  plot_data_E <- data_E %>%
-    filter(condition != "correct") %>%
-    count(condition, err_type_response) %>%
-    left_join(condition_totals, by = "condition") %>%
-    mutate(P = n / total_n_condition)
-
-  pE1 <- ggplot(plot_data_E %>%
-                  filter(err_type_response %in% c("p","p?","np","np?","both")),
-                aes(x = err_type_response, y = P, fill = condition)) +
-    geom_col(color = "white") +
-    facet_wrap(~ condition, scales = "free_x") +
-    scale_fill_manual(values = condition_colors) +
-    scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
-    scale_x_discrete(labels = function(x) str_wrap(error_type_labels[x], width = 10)) +
-    labs(x = "Error Type", y = "Proportion",
-         title = "Detailed Error Breakdown — Intended Errors Only") +
-    theme(legend.position = "none",
-          axis.text.x = element_text(angle = 40, hjust = 1))
-
-  pE2 <- ggplot(plot_data_E,
-                aes(x = err_type_response, y = P, fill = condition)) +
-    geom_col(color = "white") +
-    facet_wrap(~ condition, scales = "free_x") +
-    scale_fill_manual(values = condition_colors) +
-    scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
-    labs(x = "Error Type", y = "Proportion",
-         title = "Error Breakdown — All Annotated Responses") +
-    theme(legend.position = "none",
-          axis.text.x = element_text(angle = 35, hjust = 1))
-
-  print(pA); print(pB); print(pC); print(pD)
-  print(pE1); print(pE2)
-}
-
-run_plotting_pipeline(df_clean_all_trials)
-```
-
-
-#### 1.2 GLMER model fitting
-
-```{r glmer-model-prep, message=FALSE, warning=FALSE, echo=FALSE}
-build_long_df <- function(df_input, first_attempt_only = FALSE) {
-
-  df_clean <- df_input %>%
-    filter(stim_type == "target") %>%
-    mutate(
-      err_reported_clean = if_else(err_reported == "nanas", "nans", err_reported),
-      condition = factor(condition,
-                         levels = c("correct", "phon_err", "non_phon_err", "both_err"))
-    )
-
-  if (first_attempt_only) {
-    df_clean <- df_clean %>%
-      arrange(participant_id, question) %>%     
-      group_by(participant_id, question) %>%
-      slice(1) %>%
-      ungroup()
+  if (!dir.exists(annotated_dir)) {
+    stop(sprintf("Directory not found: %s\nWorking directory: %s",
+                 normalizePath(annotated_dir, mustWork = FALSE), getwd()))
   }
 
-  df_trial_coded <- df_clean %>%
-    group_by(participant_id, question, condition) %>%
-    summarise(
-      reported_phon    = max(if_else(err_reported_clean == "y" &
-                                       err_type_response %in% c("p","p?","both"), 1L, 0L)),
-      reported_nonphon = max(if_else(err_reported_clean == "y" &
-                                       err_type_response %in% c("np","np?","both"), 1L, 0L)),
-      .groups = "drop"
+  # Find CSVs matching the prefix (e.g., main_batch3_FB.csv) but exclude test runs
+  csvs <- list.files(annotated_dir,
+                      pattern = paste0("^", file_prefix, "_.*\\.csv$"),
+                      full.names = TRUE)
+  csvs <- csvs[!str_detect(basename(csvs), "test_run")]
+
+  if (length(csvs) == 0) {
+    stop(sprintf("No CSV files matching '%s_*.csv' in %s",
+                 file_prefix, normalizePath(annotated_dir, mustWork = FALSE)))
+  }
+  cat(sprintf("Found %d CSV files: %s\n", length(csvs), paste(basename(csvs), collapse = ", ")))
+
+  d <- map_dfr(csvs, function(f) {
+    read_csv(f, show_col_types = FALSE) %>%
+      mutate(across(everything(), as.character))
+  })
+
+  # Extract attention check scores from comments
+  att_df <- d %>%
+    filter(str_detect(comments, "\\d+/8")) %>%
+    mutate(att_score = as.integer(str_extract(comments, "\\d+(?=/8)"))) %>%
+    select(participant_id, att_score) %>%
+    distinct(participant_id, .keep_all = TRUE)
+
+  failed_ids <- att_df %>% filter(att_score < 6) %>% pull(participant_id)
+  message(sprintf("Batch '%s': %d participants, %d failed attention check (threshold 6/8)",
+                  batch_label, n_distinct(d$participant_id), length(failed_ids)))
+
+  d_clean <- d %>% filter(!participant_id %in% failed_ids)
+
+  # Add questionnaire data if available
+  if (has_questionnaire) {
+    preproc_dir <- file.path("../data/preprocessed", file_prefix)
+    q_search_dirs <- c(annotated_dir, preproc_dir)
+    q_files <- unlist(lapply(q_search_dirs[dir.exists(q_search_dirs)],
+                              list.files, pattern = "questionnaire_data.csv",
+                              full.names = TRUE, recursive = TRUE))
+    if (length(q_files) > 0) {
+      df_q <- map_dfr(q_files, function(f) {
+        read_csv(f, show_col_types = FALSE) %>%
+          filter(stimuli_presented %in% c("exposure_spanish_accent", "exposure_spanish")) %>%
+          select(participant_id, question_id = stimuli_presented, answer = response_value) %>%
+          distinct() %>%
+          pivot_wider(names_from = question_id, values_from = answer) %>%
+          rename_with(~ paste0("quest_", .), .cols = -participant_id)
+      }) %>%
+        group_by(participant_id) %>% slice(1) %>% ungroup()
+
+      d_clean <- left_join(d_clean, df_q, by = "participant_id")
+    }
+  }
+
+  d_clean$batch_id <- batch_label
+  d_clean$group    <- group_label
+  list(data = d_clean, failed_ids = failed_ids, att_scores = att_df)
+}
+
+# Load main batch 3 data
+batch_result <- process_batch_error_detection(
+  "main_batch3", "main", "Main Batch 3", TRUE
+)
+df_all   <- batch_result$data
+att_info <- batch_result$att_scores
+```
+
+```{r build-trial-df}
+# Build trial-level data frame from annotated rows
+# Each (participant_id, question) group represents one trial with multiple rows
+
+df_trials <- df_all %>%
+  filter(!is.na(stim_type), stim_type != "NA") %>%
+  group_by(participant_id, question) %>%
+  summarise(
+    stim_type = first(na.omit(stim_type[stim_type != "NA"])),
+    condition = first(na.omit(condition[condition != "NA"])),
+
+    # First attempt
+    err_reported_first = {
+      idx <- which(err_reported_attempt == "first")
+      if (length(idx) > 0) err_reported[idx[1]] else NA_character_
+    },
+    err_type_first = {
+      idx <- which(err_reported_attempt == "first")
+      if (length(idx) > 0) err_type_response[idx[1]] else NA_character_
+    },
+
+    # Second attempt
+    err_reported_second = {
+      idx <- which(str_starts(err_reported_attempt, "sec"))
+      if (length(idx) > 0) err_reported[idx[1]] else NA_character_
+    },
+    err_type_second = {
+      idx <- which(str_starts(err_reported_attempt, "sec"))
+      if (length(idx) > 0) err_type_response[idx[1]] else NA_character_
+    },
+    second_attempt_used = {
+      idx <- which(str_starts(err_reported_attempt, "sec"))
+      if (length(idx) > 0) {
+        attempt_val <- err_reported_attempt[idx[1]]
+        resp_val    <- response_value[idx[1]] %||% ""
+        # secdiff = changed answer, secsame = kept answer
+        # Check if they actually re-listened vs. skipped
+        !(str_detect(tolower(resp_val), "good") & str_detect(tolower(resp_val), "skip"))
+      } else FALSE
+    },
+    .groups = "drop"
+  ) %>%
+  filter(stim_type == "target") %>%
+  mutate(
+    # Detection indicators for first attempt
+    phon_detected_first = err_reported_first == "y" &
+      err_type_first %in% c("p", "p?", "otherp", "both", "both?"),
+    nonphon_detected_first = err_reported_first == "y" &
+      err_type_first %in% c("np", "np?", "othernp", "both", "both?"),
+
+    # Detection indicators for combined (first + second)
+    phon_detected_comb = phon_detected_first | (
+      err_reported_second == "y" &
+        err_type_second %in% c("p", "p?", "otherp", "both", "both?")
+    ),
+    nonphon_detected_comb = nonphon_detected_first | (
+      err_reported_second == "y" &
+        err_type_second %in% c("np", "np?", "othernp", "both", "both?")
+    )
+  )
+
+# Add trial position (presentation order within each participant)
+df_trials <- df_trials %>%
+  group_by(participant_id) %>%
+  mutate(trial_position = row_number()) %>%
+  ungroup()
+
+cat(sprintf("Target trials: %d from %d participants\n",
+            nrow(df_trials), n_distinct(df_trials$participant_id)))
+cat(sprintf("Conditions: %s\n",
+            paste(names(table(df_trials$condition)), collapse = ", ")))
+```
+
+
+# 2. Detection Rate Analysis (GLMER)
+
+```{r build-long-df}
+build_long_df <- function(df, attempt = "first") {
+  # Create long-format data for GLMER: 2 rows per trial (Phon + NonPhon detection)
+
+  detect_phon_col <- if (attempt == "first") "phon_detected_first" else "phon_detected_comb"
+  detect_np_col   <- if (attempt == "first") "nonphon_detected_first" else "nonphon_detected_comb"
+
+  phon_rows <- df %>%
+    transmute(
+      participant_id,
+      question,
+      condition,
+      ErrorType = "Phonological",
+      Present   = as.integer(condition %in% c("phon_err", "both_err")),
+      OtherTypePresent = as.integer(condition %in% c("non_phon_err", "both_err")),
+      Reported  = as.integer(!!sym(detect_phon_col))
     )
 
-  df_phon <- df_trial_coded %>%
-    mutate(ErrorType        = "Phon",
-           Reported         = reported_phon,
-           Present          = if_else(condition %in% c("phon_err",     "both_err"), 1L, 0L),
-           OtherTypePresent = if_else(condition %in% c("non_phon_err", "both_err"), 1L, 0L))
+  np_rows <- df %>%
+    transmute(
+      participant_id,
+      question,
+      condition,
+      ErrorType = "Non-Phonological",
+      Present   = as.integer(condition %in% c("non_phon_err", "both_err")),
+      OtherTypePresent = as.integer(condition %in% c("phon_err", "both_err")),
+      Reported  = as.integer(!!sym(detect_np_col))
+    )
 
-  df_nonphon <- df_trial_coded %>%
-    mutate(ErrorType        = "NonPhon",
-           Reported         = reported_nonphon,
-           Present          = if_else(condition %in% c("non_phon_err", "both_err"), 1L, 0L),
-           OtherTypePresent = if_else(condition %in% c("phon_err",     "both_err"), 1L, 0L))
-
-  df_long <- bind_rows(df_phon, df_nonphon) %>%
-    select(participant_id, question, ErrorType, Reported, Present, OtherTypePresent) %>%
+  bind_rows(phon_rows, np_rows) %>%
     mutate(
-      Present_c          = Present          - 0.5,
-      OtherTypePresent_c = OtherTypePresent - 0.5,
-      ErrorType          = factor(ErrorType, levels = c("NonPhon", "Phon"))
+      # Sum-coded ErrorType: NonPhon = +1, Phon = -1
+      ErrorType1 = if_else(ErrorType == "Non-Phonological", 1, -1),
+      Present_c  = Present - mean(Present),
+      OtherTypePresent_c = OtherTypePresent - mean(OtherTypePresent)
     )
-
-  # sum coding: NonPhon = +1, Phon = -1
-  contrasts(df_long$ErrorType) <- contr.sum(2)
-
-  df_long
 }
 
-df_long           <- build_long_df(df_clean_all_trials, first_attempt_only = FALSE)
-df_long_first_att <- build_long_df(df_clean_all_trials, first_attempt_only = TRUE)
+df_long_att1 <- build_long_df(df_trials, "first")
+df_long_comb <- build_long_df(df_trials, "combined")
+```
+
+```{r glmer-model}
+# Main GLMER model (first attempt)
+m_glmer <- glmer(
+  Reported ~ ErrorType1 * Present_c + ErrorType1 * OtherTypePresent_c +
+    (1 | participant_id) + (1 | question),
+  data   = df_long_att1,
+  family = binomial,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+cat("GLMER Model: Reported ~ ErrorType * Present + ErrorType * OtherTypePresent\n")
+cat("(sum-coded ErrorType: NonPhon = +1, Phon = -1)\n\n")
+summary(m_glmer)
+```
+
+```{r detection-rates}
+# Detection rates by condition (first attempt)
+det_rates <- df_trials %>%
+  summarise(
+    phon_in_phon_err = mean(phon_detected_first[condition == "phon_err"]),
+    phon_in_both_err = mean(phon_detected_first[condition == "both_err"]),
+    nonphon_in_nonphon_err = mean(nonphon_detected_first[condition == "non_phon_err"]),
+    nonphon_in_both_err = mean(nonphon_detected_first[condition == "both_err"]),
+    fa_phon_in_correct = mean(phon_detected_first[condition == "correct"]),
+    fa_nonphon_in_correct = mean(nonphon_detected_first[condition == "correct"]),
+    fa_phon_in_nonphon = mean(phon_detected_first[condition == "non_phon_err"]),
+    fa_nonphon_in_phon = mean(nonphon_detected_first[condition == "phon_err"])
+  )
+
+cat("Detection rates (first attempt):\n")
+cat(sprintf("  Phon in phon_err:      %.3f\n", det_rates$phon_in_phon_err))
+cat(sprintf("  Phon in both_err:      %.3f\n", det_rates$phon_in_both_err))
+cat(sprintf("  NonPhon in nonphon_err:%.3f\n", det_rates$nonphon_in_nonphon_err))
+cat(sprintf("  NonPhon in both_err:   %.3f\n", det_rates$nonphon_in_both_err))
+cat(sprintf("  FA Phon in correct:    %.3f\n", det_rates$fa_phon_in_correct))
+cat(sprintf("  FA NonPhon in correct: %.3f\n", det_rates$fa_nonphon_in_correct))
 ```
 
 
-```{r glmer-fit, message=FALSE, warning=FALSE, echo=FALSE}
-# Combined attempts 
-m1 <- glmer(
-  Reported ~ ErrorType * Present_c + ErrorType * OtherTypePresent_c +
-    (1 | participant_id) + (1 | question),
-  data   = df_long %>% filter(!(Present == 0 & OtherTypePresent == 0)),
-  family = binomial
-)
-summary(m1)
-sink("model_summary_both_attempts_main_batch3.txt"); summary(m1); sink()
+# 3. Signal Detection Theory Analysis
 
-# First attempt only
-m1_att1 <- glmer(
-  Reported ~ ErrorType * Present_c + ErrorType * OtherTypePresent_c +
-    (1 | participant_id) + (1 | question),
-  data   = df_long_first_att %>% filter(!(Present == 0 & OtherTypePresent == 0)),
-  family = binomial
-)
-summary(m1_att1)
-sink("model_summary_first_attempt_only_main_batch3.txt"); summary(m1_att1); sink()
+## 3.1 Standard SDT (d' and c by ErrorType)
 
-# Extract p values automatically
-extract_pval <- function(model, term) {
-  s <- summary(model)$coefficients
-  if (!term %in% rownames(s)) return(NA_real_)
-  s[term, "Pr(>|z|)"]
-}
+```{r standard-sdt}
+# Compute d' and c for each participant × ErrorType
+# Signal = Present, Noise = Absent (collapsing across OtherTypePresent)
 
-fmt_p <- function(p) {
-  if (is.na(p)) return("N/A")
-  if (p < .001) return("p < .001 ***")
-  if (p < .01)  return(sprintf("p = %.3f **",  p))
-  if (p < .05)  return(sprintf("p = %.3f *",   p))
-  sprintf("p = %.3f (ns)", p)
-}
-
-# p-values for the two key effects
-p_errortype_comb  <- extract_pval(m1,     "ErrorType1:Present_c")
-p_otherpres_att1  <- extract_pval(m1_att1,"OtherTypePresent_c")
-p_errortype_att1  <- extract_pval(m1_att1,"ErrorType1:Present_c")
-p_otherpres_comb  <- extract_pval(m1,     "OtherTypePresent_c")
-
-message("Key results:")
-message("  ErrorType × Present  (combined attempts):  ", fmt_p(p_errortype_comb))
-message("  OtherTypePresent     (attempt 1 only):     ", fmt_p(p_otherpres_att1))
-message("  ErrorType × Present  (attempt 1 only):     ", fmt_p(p_errortype_att1))
-message("  OtherTypePresent     (combined attempts):  ", fmt_p(p_otherpres_comb))
-```
-
-
-#### 1.3 Figures
-
-```{r sdt-helpers, message=FALSE, warning=FALSE, echo=FALSE}
-# SDT Helpers
-
-build_sdt_long <- function(df_input, first_attempt_only = FALSE) {
-
-  df_clean <- df_input %>%
-    filter(stim_type == "target") %>%
-    { if (first_attempt_only)
-        arrange(., participant_id, question) %>%
-          group_by(participant_id, question) %>% slice(1) %>% ungroup()
-      else . } %>%
-    mutate(err_reported_clean =
-             if_else(err_reported == "nanas", "nans", err_reported))
-
-  df_coded <- df_clean %>%
-    group_by(participant_id, question, condition) %>%
-    summarise(
-      reported_phon    = max(if_else(err_reported_clean == "y" &
-                                       err_type_response %in% c("p","p?","both"), 1L, 0L)),
-      reported_nonphon = max(if_else(err_reported_clean == "y" &
-                                       err_type_response %in% c("np","np?","both"), 1L, 0L)),
-      .groups = "drop"
-    )
-
-  bind_rows(
-    df_coded %>% mutate(ErrorType = "Phonological",
-                        Reported  = reported_phon,
-                        IsSignal  = if_else(condition %in% c("phon_err","both_err"), 1L, 0L)),
-    df_coded %>% mutate(ErrorType = "Non-Phonological",
-                        Reported  = reported_nonphon,
-                        IsSignal  = if_else(condition %in% c("non_phon_err","both_err"), 1L, 0L))
-  ) %>% select(participant_id, ErrorType, IsSignal, Reported)
-}
-
-calc_sdt <- function(df_long_sdt) {
-  df_long_sdt %>%
+calc_sdt_standard <- function(df_long) {
+  df_long %>%
     group_by(participant_id, ErrorType) %>%
     summarise(
-      hits   = sum(Reported == 1L & IsSignal == 1L),
-      misses = sum(Reported == 0L & IsSignal == 1L),
-      fas    = sum(Reported == 1L & IsSignal == 0L),
-      crs    = sum(Reported == 0L & IsSignal == 0L),
-      hit_rate = (hits + 0.5) / (hits + misses + 1),
-      fa_rate  = (fas  + 0.5) / (fas  + crs   + 1),
+      hits   = sum(Present == 1 & Reported == 1),
+      misses = sum(Present == 1 & Reported == 0),
+      fas    = sum(Present == 0 & Reported == 1),
+      crs    = sum(Present == 0 & Reported == 0),
+      n_signal = hits + misses,
+      n_noise  = fas + crs,
       .groups = "drop"
     ) %>%
     mutate(
-      d_prime = qnorm(hit_rate) - qnorm(fa_rate),
-      c_bias  = -(qnorm(hit_rate) + qnorm(fa_rate)) / 2
+      # Log-linear correction (Hautus, 1995)
+      hit_rate = (hits + 0.5) / (n_signal + 1),
+      fa_rate  = (fas + 0.5)  / (n_noise + 1),
+      d_prime  = qnorm(hit_rate) - qnorm(fa_rate),
+      c_bias   = -0.5 * (qnorm(hit_rate) + qnorm(fa_rate))
     )
 }
 
-sdt_att1 <- calc_sdt(build_sdt_long(df_clean_all_trials, first_attempt_only = TRUE))
-sdt_comb <- calc_sdt(build_sdt_long(df_clean_all_trials, first_attempt_only = FALSE))
+sdt_att1 <- calc_sdt_standard(df_long_att1) %>% mutate(Attempt = "Attempt 1")
+sdt_comb <- calc_sdt_standard(df_long_comb) %>% mutate(Attempt = "Combined (Attempts 1 & 2)")
+master_sdt <- bind_rows(sdt_att1, sdt_comb)
 
-master_sdt <- bind_rows(
-  sdt_att1 %>% mutate(Attempt = "Attempt 1"),
-  sdt_comb %>% mutate(Attempt = "Combined (Attempts 1 & 2)")
-) %>%
-  mutate(Attempt = factor(Attempt,
-                          levels = c("Attempt 1", "Combined (Attempts 1 & 2)")))
+# Summary
+master_sdt %>%
+  group_by(Attempt, ErrorType) %>%
+  summarise(
+    d_M = mean(d_prime), d_SD = sd(d_prime),
+    c_M = mean(c_bias),  c_SD = sd(c_bias),
+    .groups = "drop"
+  ) %>%
+  knitr::kable(digits = 3, caption = "Standard SDT: d' and c by ErrorType")
+```
+
+```{r sdt-standard-tests}
+# GLMER on d' and c (first attempt)
+m1_att1 <- glmer(
+  Reported ~ ErrorType1 + (1 | participant_id) + (1 | question),
+  data    = df_long_att1,
+  family  = binomial,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+# Combined
+m1_comb <- glmer(
+  Reported ~ ErrorType1 + (1 | participant_id) + (1 | question),
+  data    = df_long_comb,
+  family  = binomial,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+cat("ErrorType effect on detection (sum-coded, NonPhon=+1, Phon=-1):\n")
+cat(sprintf("  Attempt 1:  p = %.4f\n", extract_pval(m1_att1, "ErrorType1")))
+cat(sprintf("  Combined:   p = %.4f\n", extract_pval(m1_comb, "ErrorType1")))
 ```
 
 
-```{r fig1-sensitivity, fig.width=10, fig.height=7, message=FALSE, warning=FALSE, echo=FALSE}
-# Key finding: No difference on Attempt 1; Non-Phon > Phon on Combined Attempts
+## 3.2 Revised SDT: Competition Decomposition (d' and c by OtherTypePresent)
 
-p_att1_dprime <- extract_pval(m1_att1, "ErrorType1:Present_c")
-p_comb_dprime <- extract_pval(m1,      "ErrorType1:Present_c")
+This analysis decomposes the competition (masking) effect into sensitivity loss vs. criterion shift by computing d' and c separately for single-error and both-error contexts.
 
-message(sprintf(
-  "ErrorType × Present_c  |  Attempt 1: p = %.3f  |  Combined: p = %.3f",
-  p_att1_dprime, p_comb_dprime
-))
+Cell mapping for hit/FA computation:
 
-stat_brackets_dprime <- tibble(
+- Phon detection, single (OTP=0): signal = phon_err, noise = correct
+- Phon detection, both (OTP=1): signal = both_err, noise = non_phon_err
+- NonPhon detection, single (OTP=0): signal = non_phon_err, noise = correct
+- NonPhon detection, both (OTP=1): signal = both_err, noise = phon_err
+
+Predictions:
+
+- Resource-competition: d' drops when OTP=1, c unchanged
+- Criterion shift / bias: c shifts when OTP=1, d' unchanged
+
+```{r sdt-decomposition}
+calc_sdt_decomposed <- function(df_long) {
+  # Compute d' and c for each participant x ErrorType x OtherTypePresent
+  # Using context-matched signal/noise conditions
+
+  df_long %>%
+    group_by(participant_id, ErrorType, OtherTypePresent) %>%
+    summarise(
+      hits   = sum(Present == 1 & Reported == 1),
+      misses = sum(Present == 1 & Reported == 0),
+      fas    = sum(Present == 0 & Reported == 1),
+      crs    = sum(Present == 0 & Reported == 0),
+      n_signal = hits + misses,
+      n_noise  = fas + crs,
+      .groups = "drop"
+    ) %>%
+    mutate(
+      hit_rate_raw = if_else(n_signal > 0, hits / n_signal, NA_real_),
+      fa_rate_raw  = if_else(n_noise > 0, fas / n_noise, NA_real_),
+      # Log-linear correction (Hautus, 1995)
+      hit_rate = (hits + 0.5) / (n_signal + 1),
+      fa_rate  = (fas + 0.5)  / (n_noise + 1),
+      d_prime  = qnorm(hit_rate) - qnorm(fa_rate),
+      c_bias   = -0.5 * (qnorm(hit_rate) + qnorm(fa_rate)),
+      Context  = if_else(OtherTypePresent == 0, "Single", "Both")
+    )
+}
+
+sdt_decomp <- calc_sdt_decomposed(df_long_att1)
+
+# Cell means table
+sdt_decomp %>%
+  group_by(ErrorType, Context) %>%
+  summarise(
+    d_M = mean(d_prime), d_SD = sd(d_prime),
+    c_M = mean(c_bias),  c_SD = sd(c_bias),
+    HR  = mean(hit_rate_raw, na.rm = TRUE),
+    FAR = mean(fa_rate_raw, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  knitr::kable(digits = 3, caption = "SDT Decomposition: d' and c by ErrorType x Context")
+```
+
+```{r sdt-decomp-tests}
+# 2x2 repeated-measures tests using paired t-tests
+
+# Reshape to wide for paired tests
+sdt_wide <- sdt_decomp %>%
+  select(participant_id, ErrorType, Context, d_prime, c_bias) %>%
+  pivot_wider(
+    names_from  = c(ErrorType, Context),
+    values_from = c(d_prime, c_bias),
+    names_sep   = "_"
+  )
+
+# Main effect of OtherTypePresent on d'
+sdt_wide <- sdt_wide %>%
+  mutate(
+    d_single_avg = (d_prime_Phonological_Single + `d_prime_Non-Phonological_Single`) / 2,
+    d_both_avg   = (d_prime_Phonological_Both + `d_prime_Non-Phonological_Both`) / 2,
+    c_single_avg = (c_bias_Phonological_Single + `c_bias_Non-Phonological_Single`) / 2,
+    c_both_avg   = (c_bias_Phonological_Both + `c_bias_Non-Phonological_Both`) / 2
+  )
+
+cat("SENSITIVITY (d') TESTS\n\n")
+
+# Main effect of OTP on d'
+t_otp_d <- t.test(sdt_wide$d_single_avg, sdt_wide$d_both_avg, paired = TRUE)
+diff_d  <- mean(sdt_wide$d_single_avg - sdt_wide$d_both_avg)
+dz_d    <- diff_d / sd(sdt_wide$d_single_avg - sdt_wide$d_both_avg)
+
+cat(sprintf("Main effect of OtherTypePresent on d':\n"))
+cat(sprintf("  Single: M = %.3f, Both: M = %.3f\n",
+            mean(sdt_wide$d_single_avg), mean(sdt_wide$d_both_avg)))
+cat(sprintf("  Diff (single - both) = %+.3f\n", diff_d))
+cat(sprintf("  t(%d) = %.3f, p = %.4f, dz = %.3f\n\n",
+            t_otp_d$parameter, t_otp_d$statistic, t_otp_d$p.value, dz_d))
+
+# Main effect of ErrorType on d'
+sdt_wide <- sdt_wide %>%
+  mutate(
+    d_phon_avg   = (d_prime_Phonological_Single + d_prime_Phonological_Both) / 2,
+    d_nonphon_avg = (`d_prime_Non-Phonological_Single` + `d_prime_Non-Phonological_Both`) / 2
+  )
+
+t_et_d <- t.test(sdt_wide$d_phon_avg, sdt_wide$d_nonphon_avg, paired = TRUE)
+cat(sprintf("Main effect of ErrorType on d':\n"))
+cat(sprintf("  Phon: M = %.3f, NonPhon: M = %.3f\n",
+            mean(sdt_wide$d_phon_avg), mean(sdt_wide$d_nonphon_avg)))
+cat(sprintf("  t(%d) = %.3f, p = %.4f\n\n",
+            t_et_d$parameter, t_et_d$statistic, t_et_d$p.value))
+
+# Interaction: ErrorType x OTP on d'
+sdt_wide <- sdt_wide %>%
+  mutate(
+    otp_effect_d_phon   = d_prime_Phonological_Single - d_prime_Phonological_Both,
+    otp_effect_d_nonphon = `d_prime_Non-Phonological_Single` - `d_prime_Non-Phonological_Both`
+  )
+
+t_int_d <- t.test(sdt_wide$otp_effect_d_phon, sdt_wide$otp_effect_d_nonphon, paired = TRUE)
+cat(sprintf("Interaction (ErrorType x OTP) on d':\n"))
+cat(sprintf("  OTP effect on Phon d':    %+.3f\n", mean(sdt_wide$otp_effect_d_phon)))
+cat(sprintf("  OTP effect on NonPhon d': %+.3f\n", mean(sdt_wide$otp_effect_d_nonphon)))
+cat(sprintf("  t(%d) = %.3f, p = %.4f\n\n",
+            t_int_d$parameter, t_int_d$statistic, t_int_d$p.value))
+
+# Simple effects of OTP within each error type
+cat("Simple effects of OTP on d':\n")
+t_phon <- t.test(sdt_wide$d_prime_Phonological_Single,
+                  sdt_wide$d_prime_Phonological_Both, paired = TRUE)
+cat(sprintf("  Phon: single M=%.3f, both M=%.3f, diff=%+.3f, t=%.3f, p=%.4f\n",
+            mean(sdt_wide$d_prime_Phonological_Single),
+            mean(sdt_wide$d_prime_Phonological_Both),
+            mean(sdt_wide$d_prime_Phonological_Single - sdt_wide$d_prime_Phonological_Both),
+            t_phon$statistic, t_phon$p.value))
+
+t_np <- t.test(sdt_wide$`d_prime_Non-Phonological_Single`,
+                sdt_wide$`d_prime_Non-Phonological_Both`, paired = TRUE)
+cat(sprintf("  NonPhon: single M=%.3f, both M=%.3f, diff=%+.3f, t=%.3f, p=%.4f\n\n",
+            mean(sdt_wide$`d_prime_Non-Phonological_Single`),
+            mean(sdt_wide$`d_prime_Non-Phonological_Both`),
+            mean(sdt_wide$`d_prime_Non-Phonological_Single` - sdt_wide$`d_prime_Non-Phonological_Both`),
+            t_np$statistic, t_np$p.value))
+
+# CRITERION (c) TESTS
+cat("CRITERION (c) TESTS\n\n")
+
+t_otp_c <- t.test(sdt_wide$c_single_avg, sdt_wide$c_both_avg, paired = TRUE)
+diff_c  <- mean(sdt_wide$c_both_avg - sdt_wide$c_single_avg)
+cat(sprintf("Main effect of OtherTypePresent on c:\n"))
+cat(sprintf("  Single: M = %.3f, Both: M = %.3f\n",
+            mean(sdt_wide$c_single_avg), mean(sdt_wide$c_both_avg)))
+cat(sprintf("  Diff (both - single) = %+.3f\n", diff_c))
+cat(sprintf("  t(%d) = %.3f, p = %.4f\n\n",
+            t_otp_c$parameter, t_otp_c$statistic, t_otp_c$p.value))
+
+# ErrorType effect on c
+sdt_wide <- sdt_wide %>%
+  mutate(
+    c_phon_avg   = (c_bias_Phonological_Single + c_bias_Phonological_Both) / 2,
+    c_nonphon_avg = (`c_bias_Non-Phonological_Single` + `c_bias_Non-Phonological_Both`) / 2
+  )
+
+t_et_c <- t.test(sdt_wide$c_phon_avg, sdt_wide$c_nonphon_avg, paired = TRUE)
+cat(sprintf("Main effect of ErrorType on c:\n"))
+cat(sprintf("  Phon: M = %.3f, NonPhon: M = %.3f\n",
+            mean(sdt_wide$c_phon_avg), mean(sdt_wide$c_nonphon_avg)))
+cat(sprintf("  t(%d) = %.3f, p = %.4f\n\n",
+            t_et_c$parameter, t_et_c$statistic, t_et_c$p.value))
+
+# Interaction on c
+sdt_wide <- sdt_wide %>%
+  mutate(
+    otp_effect_c_phon   = c_bias_Phonological_Both - c_bias_Phonological_Single,
+    otp_effect_c_nonphon = `c_bias_Non-Phonological_Both` - `c_bias_Non-Phonological_Single`
+  )
+
+t_int_c <- t.test(sdt_wide$otp_effect_c_phon, sdt_wide$otp_effect_c_nonphon, paired = TRUE)
+cat(sprintf("Interaction (ErrorType x OTP) on c:\n"))
+cat(sprintf("  OTP effect on Phon c:    %+.3f\n", mean(sdt_wide$otp_effect_c_phon)))
+cat(sprintf("  OTP effect on NonPhon c: %+.3f\n", mean(sdt_wide$otp_effect_c_nonphon)))
+cat(sprintf("  t(%d) = %.3f, p = %.4f\n\n",
+            t_int_c$parameter, t_int_c$statistic, t_int_c$p.value))
+
+# Simple effects on c
+cat("Simple effects of OTP on c:\n")
+t_c_phon <- t.test(sdt_wide$c_bias_Phonological_Single,
+                    sdt_wide$c_bias_Phonological_Both, paired = TRUE)
+cat(sprintf("  Phon: single M=%.3f, both M=%.3f, diff=%+.3f, t=%.3f, p=%.4f\n",
+            mean(sdt_wide$c_bias_Phonological_Single),
+            mean(sdt_wide$c_bias_Phonological_Both),
+            mean(sdt_wide$c_bias_Phonological_Both - sdt_wide$c_bias_Phonological_Single),
+            t_c_phon$statistic, t_c_phon$p.value))
+
+t_c_np <- t.test(sdt_wide$`c_bias_Non-Phonological_Single`,
+                  sdt_wide$`c_bias_Non-Phonological_Both`, paired = TRUE)
+cat(sprintf("  NonPhon: single M=%.3f, both M=%.3f, diff=%+.3f, t=%.3f, p=%.4f\n",
+            mean(sdt_wide$`c_bias_Non-Phonological_Single`),
+            mean(sdt_wide$`c_bias_Non-Phonological_Both`),
+            mean(sdt_wide$`c_bias_Non-Phonological_Both` - sdt_wide$`c_bias_Non-Phonological_Single`),
+            t_c_np$statistic, t_c_np$p.value))
+
+# Interpretation summary
+cat("\nINTERPRETATION:\n")
+cat("  Resource-competition predicts: d' drops with OTP, c unchanged\n")
+cat("  Criterion-shift predicts:      c shifts with OTP, d' unchanged\n")
+cat(sprintf("  d' main effect of OTP: p = %.4f (%s)\n",
+            t_otp_d$p.value, if (t_otp_d$p.value < .05) "SIGNIFICANT" else "n.s."))
+cat(sprintf("  c  main effect of OTP: p = %.4f (%s)\n",
+            t_otp_c$p.value, if (t_otp_c$p.value < .05) "SIGNIFICANT" else "n.s."))
+```
+
+```{r sdt-decomp-diagnostics}
+# Floor/ceiling diagnostics (6 trials per cell)
+cat("Floor/ceiling rates (before log-linear correction):\n")
+sdt_decomp %>%
+  group_by(ErrorType, Context) %>%
+  summarise(
+    HR_0  = sum(hit_rate_raw == 0, na.rm = TRUE),
+    HR_1  = sum(hit_rate_raw == 1, na.rm = TRUE),
+    FAR_0 = sum(fa_rate_raw == 0, na.rm = TRUE),
+    FAR_1 = sum(fa_rate_raw == 1, na.rm = TRUE),
+    N     = n(),
+    .groups = "drop"
+  ) %>%
+  knitr::kable(caption = "Floor/ceiling counts per cell")
+```
+
+
+# 4. Figures
+
+## Figure 1: Sensitivity (d') by ErrorType
+
+```{r figure-1-dprime, fig.width=12, fig.height=6}
+# d' plot comparing Phon vs NonPhon across attempts
+p_att1_dprime <- extract_pval(m1_att1, "ErrorType1")
+p_comb_dprime <- extract_pval(m1_comb, "ErrorType1")
+
+stat_dprime <- tibble(
   Attempt    = c("Attempt 1", "Combined (Attempts 1 & 2)"),
   group1     = "Phonological",
   group2     = "Non-Phonological",
   p_label    = c(fmt_p(p_att1_dprime), fmt_p(p_comb_dprime)),
-  y.position = c(3.6, 3.6)
+  y.position = max(master_sdt$d_prime, na.rm = TRUE) + 0.3
 )
 
-p1 <- ggplot(
-    master_sdt,
-    aes(x = ErrorType, y = d_prime, fill = ErrorType)
-  ) +
-  geom_boxplot(
-    width         = 0.55,
-    outlier.shape = NA,
-    alpha         = 0.75,
-    color         = "grey30",
-    linewidth     = 0.55
-  ) +
-  geom_jitter(
-    width       = 0.12,
-    size        = 2.0,
-    alpha       = 0.30,
-    color       = "grey25",
-    show.legend = FALSE
-  ) +
-  stat_pvalue_manual(
-    stat_brackets_dprime,
-    label        = "p_label",
-    y.position   = "y.position",
-    tip.length   = 0.015,
-    size         = 8,              
-    bracket.size = 0.7,
-    inherit.aes  = FALSE
-  ) +
-  geom_hline(
-    yintercept = 0, linetype = "dashed",
-    color = "grey50", linewidth = 0.7
-  ) +
-  facet_wrap(
-    ~ Attempt,
-    labeller = labeller(Attempt = c(
-      "Attempt 1"                 = "Attempt 1\n(Initial)",
-      "Combined (Attempts 1 & 2)" = "Combined\n(After Re-exposure)"
-    ))
-  ) +
+p1 <- ggplot(master_sdt, aes(x = ErrorType, y = d_prime, fill = ErrorType)) +
+  geom_boxplot(width = 0.55, outlier.shape = NA, alpha = 0.75,
+               color = "grey30", linewidth = 0.55) +
+  geom_jitter(width = 0.12, size = 2.0, alpha = 0.40,
+              color = "grey25", show.legend = FALSE) +
+  stat_pvalue_manual(stat_dprime, label = "p_label", y.position = "y.position",
+                     tip.length = 0.015, size = 5.5, bracket.size = 0.7,
+                     inherit.aes = FALSE) +
+  facet_wrap(~ Attempt, labeller = labeller(Attempt = c(
+    "Attempt 1"                 = "Attempt 1 (Initial)",
+    "Combined (Attempts 1 & 2)" = "Combined (After Re-exposure)"
+  ))) +
   scale_fill_manual(values = error_colors) +
-  scale_y_continuous(limits = c(-1.5, 4.2), breaks = seq(-1, 4, 1)) +
-  scale_x_discrete(
-    labels = c(
-      "Phonological"     = "Phonological",
-      "Non-Phonological" = "Non-\nPhonological"
-    )
-  ) +
-  labs(
-    title    = NULL,                                       
-    subtitle = NULL,                                          
-    y        = "Sensitivity  (d\u2019)",
-    x        = NULL,
-    fill     = "Error Type",
-    caption  = "p-value: ErrorType \u00d7 Present interaction from GLMER  |  d\u2019 = 0: chance"
-  ) +
-  guides(fill = guide_legend(override.aes = list(alpha = 1))) +
-  theme(
-    legend.position    = "top",                               
-    legend.text        = element_text(size = 25),            
-    legend.title       = element_text(size = 25, face = "bold"),
-    legend.key.size    = unit(1.2, "cm"),
-    axis.title.y       = element_text(size = 25),
-    axis.text          = element_text(size = 25),
-    strip.text         = element_text(size = 25, face = "bold"), 
-    plot.caption       = element_text(size = 20, hjust = 0.5)    
-  )
+  scale_x_discrete(labels = c(
+    "Phonological" = "Phonological",
+    "Non-Phonological" = "Non-\nPhonological"
+  )) +
+  labs(title = "Sensitivity (d')", y = "d'", x = NULL, fill = "Error Type",
+       caption = "p-value: ErrorType main effect from GLMER | d' = 0: chance") +
+  guides(fill = guide_legend(override.aes = list(alpha = 1)))
 
 p1
-
-
-ggsave("figure1_sensitivity_main_batch3.tiff", p1, width = 10, height = 6, dpi = 600)
+ggsave("figure1_sensitivity.tiff", p1, width = 12, height = 6, dpi = 600)
 ```
 
+## Figure 2: Masking / Competition
 
-```{r fig2-masking, fig.width=11, fig.height=7, message=FALSE, warning=FALSE, echo=FALSE}
-
-# Key finding: When a second error is added, detection of the first drops
-# (significantly on Attempt 1; alleviated on Combined Attempts)
-
-build_masking_long <- function(df_input, first_attempt_only = FALSE) {
-
-  df_clean <- df_input %>%
-    filter(stim_type == "target") %>%
-    { if (first_attempt_only)
-        arrange(., participant_id, question) %>%
-          group_by(participant_id, question) %>% slice(1) %>% ungroup()
-      else . } %>%
-    mutate(err_reported_clean =
-             if_else(err_reported == "nanas", "nans", err_reported))
-
-  df_coded <- df_clean %>%
-    group_by(participant_id, question, condition) %>%
-    summarise(
-      reported_phon    = max(if_else(err_reported_clean == "y" &
-                                       err_type_response %in% c("p","p?","both"), 1L, 0L)),
-      reported_nonphon = max(if_else(err_reported_clean == "y" &
-                                       err_type_response %in% c("np","np?","both"), 1L, 0L)),
-      .groups = "drop"
-    )
-
-  df_phon <- df_coded %>%
-    filter(condition %in% c("phon_err", "both_err")) %>%
-    mutate(ErrorType = "Phonological",
-           Reported  = reported_phon,
-           Context   = if_else(condition == "both_err",
-                               "Both Error Types", "Single Error Type"))
-
-  df_nonphon <- df_coded %>%
-    filter(condition %in% c("non_phon_err", "both_err")) %>%
-    mutate(ErrorType = "Non-Phonological",
-           Reported  = reported_nonphon,
-           Context   = if_else(condition == "both_err",
-                               "Both Error Types", "Single Error Type"))
-
-  bind_rows(df_phon, df_nonphon) %>%
-    select(participant_id, ErrorType, Context, Reported) %>%
-    mutate(Context = factor(Context,
-                            levels = c("Single Error Type", "Both Error Types")))
-}
-
-calc_masking_summary <- function(df_mask) {
-  df_mask %>%
+```{r figure-2-masking, fig.width=12, fig.height=6}
+# Build masking-specific data: detection rate by ErrorType x Context
+build_masking_df <- function(df_long) {
+  df_long %>%
+    filter(Present == 1) %>%
+    mutate(
+      Context = if_else(OtherTypePresent == 0,
+                        "Single Error Type", "Both Error Types")
+    ) %>%
     group_by(participant_id, ErrorType, Context) %>%
-    summarise(hit_rate = mean(Reported, na.rm = TRUE), .groups = "drop")
+    summarise(hit_rate = mean(Reported), .groups = "drop")
 }
 
-mask_att1 <- calc_masking_summary(
-  build_masking_long(df_clean_all_trials, first_attempt_only = TRUE)) %>%
+calc_masking_summary <- function(mask_df) {
+  mask_df %>%
+    group_by(ErrorType, Context) %>%
+    summarise(
+      stats = list(smean.cl.boot(hit_rate)),
+      .groups = "drop"
+    ) %>%
+    unnest_wider(stats)
+}
+
+# First attempt
+master_mask_att1 <- build_masking_df(df_long_att1) %>%
+  mutate(Attempt = "Attempt 1")
+mask_means_att1  <- calc_masking_summary(master_mask_att1) %>%
   mutate(Attempt = "Attempt 1")
 
-mask_comb <- calc_masking_summary(
-  build_masking_long(df_clean_all_trials, first_attempt_only = FALSE)) %>%
+# Combined
+master_mask_comb <- build_masking_df(df_long_comb) %>%
+  mutate(Attempt = "Combined (Attempts 1 & 2)")
+mask_means_comb  <- calc_masking_summary(master_mask_comb) %>%
   mutate(Attempt = "Combined (Attempts 1 & 2)")
 
-master_mask <- bind_rows(mask_att1, mask_comb) %>%
-  mutate(Attempt = factor(Attempt,
-                          levels = c("Attempt 1", "Combined (Attempts 1 & 2)")))
+master_mask <- bind_rows(master_mask_att1, master_mask_comb)
+mask_means  <- bind_rows(mask_means_att1, mask_means_comb)
 
-mask_means <- master_mask %>%
-  group_by(ErrorType, Context, Attempt) %>%
-  summarise(
-    Mean = mean(hit_rate, na.rm = TRUE),
-    SE   = sd(hit_rate, na.rm = TRUE) / sqrt(n()),
-    .groups = "drop"
+# Masking p-values from GLMER (OtherTypePresent_c effect)
+p_mask_att1 <- extract_pval(m_glmer, "OtherTypePresent_c")
+p_mask_comb <- {
+  m_comb <- glmer(
+    Reported ~ ErrorType1 * Present_c + ErrorType1 * OtherTypePresent_c +
+      (1 | participant_id) + (1 | question),
+    data    = df_long_comb,
+    family  = binomial,
+    control = glmerControl(optimizer = "bobyqa")
   )
-
-p_mask_att1 <- extract_pval(m1_att1, "OtherTypePresent_c")
-p_mask_comb <- extract_pval(m1,      "OtherTypePresent_c")
+  extract_pval(m_comb, "OtherTypePresent_c")
+}
 
 stat_mask <- tibble(
   Attempt    = c("Attempt 1", "Combined (Attempts 1 & 2)"),
@@ -770,104 +691,127 @@ stat_mask <- tibble(
   y.position = c(1.05, 1.05)
 )
 
-p2 <- ggplot(mask_means,
-               aes(x = Context, y = Mean,
-                   color = ErrorType, group = ErrorType)) +
-  geom_jitter(
-    data   = master_mask,
-    aes(y = hit_rate),
-    width  = 0.06,
-    height = 0,
-    size   = 1.8,
-    alpha  = 0.25,
-    show.legend = FALSE
-  ) +
-  geom_ribbon(
-    aes(ymin = Mean - SE, ymax = Mean + SE, fill = ErrorType),
-    alpha    = 0.18,
-    color    = NA
-  ) +
+p2 <- ggplot(mask_means, aes(x = Context, y = Mean,
+                              color = ErrorType, group = ErrorType)) +
+  geom_jitter(data = master_mask, aes(y = hit_rate),
+              width = 0.06, height = 0, size = 1.8, alpha = 0.25,
+              show.legend = FALSE) +
+  geom_ribbon(aes(ymin = Lower, ymax = Upper, fill = ErrorType),
+              alpha = 0.18, color = NA) +
   geom_line(linewidth = 1.8) +
   geom_point(size = 5, shape = 19) +
-  stat_pvalue_manual(
-    stat_mask,
-    label        = "p_label",
-    y.position   = "y.position",
-    tip.length   = 0.015,
-    size         = 8,
-    bracket.size = 0.7,
-    inherit.aes  = FALSE
-  ) +
-  facet_wrap(~ Attempt,
-             labeller = labeller(Attempt = c(
-               "Attempt 1"                 = "Attempt 1 (Initial)",
-               "Combined (Attempts 1 & 2)" = "Combined (After Re-exposure)"
-             ))) +
-
+  stat_pvalue_manual(stat_mask, label = "p_label", y.position = "y.position",
+                     tip.length = 0.015, size = 8, bracket.size = 0.7,
+                     inherit.aes = FALSE) +
+  facet_wrap(~ Attempt, labeller = labeller(Attempt = c(
+    "Attempt 1"                 = "Attempt 1 (Initial)",
+    "Combined (Attempts 1 & 2)" = "Combined (After Re-exposure)"
+  ))) +
   scale_color_manual(values = error_colors) +
-  scale_fill_manual( values = error_colors) +
-  scale_y_continuous(labels = percent_format(),
-                     limits = c(0, 1.15),
+  scale_fill_manual(values = error_colors) +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 1.15),
                      breaks = seq(0, 1, 0.25)) +
   scale_x_discrete(labels = c("Single Error Type" = "Single\nError Type",
                                "Both Error Types"  = "Both\nError Types")) +
-
-  labs(
-    y        = "Detection Rate",
-    x        = NULL,
-    color    = "Error Type",
-    fill     = "Error Type",
-    caption  = "Downward slope = masking (detection cost of adding a second error)"
-  ) +
-  guides(
-    color = guide_legend(override.aes = list(alpha = 1, size = 5)),
-    fill  = "none"
-  ) +
-  theme(
-    legend.position    = "top",                               
-    legend.text        = element_text(size = 25),            
-    legend.title       = element_text(size = 25, face = "bold"),
-    legend.key.size    = unit(1.2, "cm"),
-    axis.title.y       = element_text(size = 25),
-    axis.text          = element_text(size = 25),
-    strip.text         = element_text(size = 25, face = "bold"), 
-    plot.caption       = element_text(size = 20, hjust = 0.5)    
-  )
+  labs(y = "Detection Rate", x = NULL, color = "Error Type", fill = "Error Type",
+       caption = "Downward slope = masking (detection cost of adding a second error)") +
+  guides(color = guide_legend(override.aes = list(alpha = 1, size = 5)),
+         fill = "none") +
+  theme(legend.text = element_text(size = 14), legend.title = element_text(size = 14))
 
 p2
-
-ggsave("figure2_masking_main_batch3.tiff", p2, width = 12, height = 6, dpi = 600)
+ggsave("figure2_masking.tiff", p2, width = 12, height = 6, dpi = 600)
 ```
 
-
-```{r fig1-fig2-combined, fig.width=18, fig.height=8, message=FALSE, warning=FALSE, echo=FALSE}
-# Only if we want to display the plots side by side
-
-library(patchwork)
-
+```{r fig1-fig2-combined, fig.width=18, fig.height=8}
 p3 <- (p1 | p2) +
   plot_annotation(
     tag_levels = "A",
-    theme = theme(
-      plot.tag = element_text(size = 24, face = "bold")
-    )
+    theme = theme(plot.tag = element_text(size = 24, face = "bold"))
   )
 p3
 ```
 
+## Figure 3: SDT Competition Decomposition (d' and c by ErrorType x Context)
 
-#### 1.4 Supplementary SDT plots
+```{r figure-3-sdt-decomposition, fig.width=14, fig.height=6}
+# Panel A: d'
+decomp_d_summary <- sdt_decomp %>%
+  group_by(ErrorType, Context) %>%
+  summarise(
+    M  = mean(d_prime),
+    SE = sd(d_prime) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ErrorType = factor(ErrorType, levels = c("Phonological", "Non-Phonological")),
+    Context   = factor(Context, levels = c("Single", "Both"))
+  )
 
-```{r appendix-bias-plot, fig.width=10, fig.height=6, message=FALSE, warning=FALSE, echo=FALSE}
+pa <- ggplot(decomp_d_summary,
+             aes(x = Context, y = M, fill = ErrorType, alpha = Context)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7,
+           color = "white", linewidth = 0.8) +
+  geom_errorbar(aes(ymin = M - SE, ymax = M + SE),
+                position = position_dodge(width = 0.8), width = 0.2,
+                linewidth = 0.8) +
+  scale_fill_manual(values = error_colors) +
+  scale_alpha_manual(values = c("Single" = 0.9, "Both" = 0.5), guide = "none") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.5) +
+  labs(title = "A. Sensitivity (d')", y = "d'", x = "Error Context",
+       fill = "Error Type") +
+  theme(legend.position = "top")
+
+# Panel B: c
+decomp_c_summary <- sdt_decomp %>%
+  group_by(ErrorType, Context) %>%
+  summarise(
+    M  = mean(c_bias),
+    SE = sd(c_bias) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ErrorType = factor(ErrorType, levels = c("Phonological", "Non-Phonological")),
+    Context   = factor(Context, levels = c("Single", "Both"))
+  )
+
+pb <- ggplot(decomp_c_summary,
+             aes(x = Context, y = M, fill = ErrorType, alpha = Context)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7,
+           color = "white", linewidth = 0.8) +
+  geom_errorbar(aes(ymin = M - SE, ymax = M + SE),
+                position = position_dodge(width = 0.8), width = 0.2,
+                linewidth = 0.8) +
+  scale_fill_manual(values = error_colors) +
+  scale_alpha_manual(values = c("Single" = 0.9, "Both" = 0.5), guide = "none") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.5) +
+  annotate("text", x = 0.5, y = 0.02, label = "Neutral",
+           fontface = "italic", size = 4, color = "grey40") +
+  labs(title = "B. Criterion (c)", y = "c (bias)", x = "Error Context",
+       fill = "Error Type",
+       caption = "Positive c = conservative (reluctant to report)") +
+  theme(legend.position = "top")
+
+p_decomp <- pa | pb
+p_decomp + plot_annotation(
+  title = "SDT Decomposition of Competition Effect",
+  subtitle = "Single-error vs. Both-error context",
+  theme = theme(
+    plot.title = element_text(size = 16, face = "bold"),
+    plot.subtitle = element_text(size = 13)
+  )
+)
+
+ggsave("figure3_sdt_decomposition.tiff", p_decomp, width = 14, height = 6, dpi = 600)
+```
+
+## Supplementary: Bias (c) by ErrorType
+
+```{r appendix-bias-plot, fig.width=10, fig.height=6}
 p_att1_bias <- extract_pval(m1_att1, "ErrorType1")
-p_comb_bias <- extract_pval(m1,      "ErrorType1")
+p_comb_bias <- extract_pval(m1_comb, "ErrorType1")
 
-message(sprintf(
-  "Bias p-values (ErrorType1 main effect)  |  Att1: p = %.3f  |  Combined: p = %.3f",
-  p_att1_bias, p_comb_bias
-))
-
-stat_bias_brackets <- tibble(
+stat_bias <- tibble(
   Attempt    = c("Attempt 1", "Combined (Attempts 1 & 2)"),
   group1     = "Phonological",
   group2     = "Non-Phonological",
@@ -875,76 +819,349 @@ stat_bias_brackets <- tibble(
   y.position = max(master_sdt$c_bias, na.rm = TRUE) + 0.25
 )
 
-p4 <- ggplot(
-    master_sdt,
-    aes(x = ErrorType, y = c_bias, fill = ErrorType)
-  ) +
-  geom_boxplot(
-    width         = 0.55,
-    outlier.shape = NA,
-    alpha         = 0.75,
-    color         = "grey30",
-    linewidth     = 0.55
-  ) +
-  geom_jitter(
-    width       = 0.12,
-    size        = 2.0,
-    alpha       = 0.40,
-    color       = "grey25",
-    show.legend = FALSE
-  ) +
-  stat_pvalue_manual(
-    stat_bias_brackets,
-    label        = "p_label",
-    y.position   = "y.position",
-    tip.length   = 0.015,
-    size         = 5.5,
-    bracket.size = 0.7,
-    inherit.aes  = FALSE
-  ) +
-  geom_hline(
-    yintercept = 0, linetype = "dashed",
-    color = "grey50", linewidth = 0.7
-  ) +
-  annotate(
-    "text", x = 0.55, y = 0,
-    label    = "Neutral",
-    vjust    = -0.6,
-    fontface = "italic",
-    size     = 5,
-    color    = "grey40"
-  ) +
-  facet_wrap(
-    ~ Attempt,
-    labeller = labeller(Attempt = c(
-      "Attempt 1"                 = "Attempt 1\n(Initial)",
-      "Combined (Attempts 1 & 2)" = "Combined\n(After Re-exposure)"
-    ))
-  ) +
+p4 <- ggplot(master_sdt, aes(x = ErrorType, y = c_bias, fill = ErrorType)) +
+  geom_boxplot(width = 0.55, outlier.shape = NA, alpha = 0.75,
+               color = "grey30", linewidth = 0.55) +
+  geom_jitter(width = 0.12, size = 2.0, alpha = 0.40,
+              color = "grey25", show.legend = FALSE) +
+  stat_pvalue_manual(stat_bias, label = "p_label", y.position = "y.position",
+                     tip.length = 0.015, size = 5.5, bracket.size = 0.7,
+                     inherit.aes = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.7) +
+  annotate("text", x = 0.55, y = 0, label = "Neutral",
+           vjust = -0.6, fontface = "italic", size = 5, color = "grey40") +
+  facet_wrap(~ Attempt, labeller = labeller(Attempt = c(
+    "Attempt 1"                 = "Attempt 1\n(Initial)",
+    "Combined (Attempts 1 & 2)" = "Combined\n(After Re-exposure)"
+  ))) +
   scale_fill_manual(values = error_colors) +
-  scale_x_discrete(
-    labels = c(
-      "Phonological"     = "Phonological",
-      "Non-Phonological" = "Non-\nPhonological"
-    )
-  ) +
-  labs(
-    title    = "Response Bias (c)",
-    subtitle = "Positive = conservative (reluctant to report)  |  Negative = liberal",
-    y        = "Bias  (c)",
-    x        = NULL,
-    fill     = "Error Type",
-    caption  = "p-value: ErrorType main effect from GLMER  |  c = 0: neutral bias"
-  ) +
+  scale_x_discrete(labels = c("Phonological" = "Phonological",
+                               "Non-Phonological" = "Non-\nPhonological")) +
+  labs(title = "Response Bias (c)", y = "Bias (c)", x = NULL, fill = "Error Type",
+       subtitle = "Positive = conservative (reluctant to report) | Negative = liberal",
+       caption = "p-value: ErrorType main effect from GLMER | c = 0: neutral bias") +
   guides(fill = guide_legend(override.aes = list(alpha = 1)))
 
 p4
 ```
 
 
-### 2. Transcription data
+# 5. Stopping Rule Analysis
 
-```{r transcription-pipeline, message=FALSE, warning=FALSE, echo=FALSE}
+In both_err trials, do participants detect both errors or stop after detecting one?
+
+```{r stopping-rule}
+both_err_trials <- df_trials %>% filter(condition == "both_err")
+
+cat(sprintf("Both_err trials: %d from %d participants\n\n",
+            nrow(both_err_trials), n_distinct(both_err_trials$participant_id)))
+
+# Classify first-attempt responses
+stopping_first <- both_err_trials %>%
+  mutate(
+    response_pattern = case_when(
+      err_type_first %in% c("both", "both?")          ~ "detected_both",
+      err_type_first %in% c("p", "p?", "otherp")      ~ "only_phon",
+      err_type_first %in% c("np", "np?", "othernp")   ~ "only_nonphon",
+      err_reported_first == "y"                        ~ "reported_other",
+      TRUE                                             ~ "missed_both"
+    )
+  )
+
+cat("First-attempt response patterns in both_err condition:\n")
+stopping_first %>%
+  count(response_pattern) %>%
+  mutate(pct = 100 * n / sum(n)) %>%
+  arrange(desc(n)) %>%
+  knitr::kable(digits = 1)
+
+# Of those who detected at least one, what fraction detected both?
+detected_any <- stopping_first %>%
+  filter(response_pattern %in% c("detected_both", "only_phon", "only_nonphon"))
+
+if (nrow(detected_any) > 0) {
+  n_both <- sum(detected_any$response_pattern == "detected_both")
+  n_one  <- sum(detected_any$response_pattern != "detected_both")
+  cat(sprintf("\nOf trials with >=1 error detected (N=%d):\n", nrow(detected_any)))
+  cat(sprintf("  Detected both: %d (%.1f%%)\n", n_both, 100 * n_both / nrow(detected_any)))
+  cat(sprintf("  Stopped at one: %d (%.1f%%)\n", n_one, 100 * n_one / nrow(detected_any)))
+  cat(sprintf("    Only phon:    %d\n", sum(detected_any$response_pattern == "only_phon")))
+  cat(sprintf("    Only nonphon: %d\n", sum(detected_any$response_pattern == "only_nonphon")))
+}
+
+# Combined (first + second attempt)
+stopping_comb <- both_err_trials %>%
+  mutate(
+    detected_phon_comb = phon_detected_comb,
+    detected_nonphon_comb = nonphon_detected_comb,
+    response_pattern_comb = case_when(
+      detected_phon_comb & detected_nonphon_comb ~ "detected_both",
+      detected_phon_comb                         ~ "only_phon",
+      detected_nonphon_comb                      ~ "only_nonphon",
+      err_reported_first == "y" | err_reported_second == "y" ~ "reported_other",
+      TRUE                                       ~ "missed_both"
+    )
+  )
+
+cat("\nCombined (first + second attempt) response patterns:\n")
+stopping_comb %>%
+  count(response_pattern_comb) %>%
+  mutate(pct = 100 * n / sum(n)) %>%
+  arrange(desc(n)) %>%
+  knitr::kable(digits = 1)
+```
+
+
+# 6. Learning Effects in Error Detection
+
+Does detection rate improve across the 24 target trials?
+
+```{r learning-detection}
+# Trial position effects on detection
+learning_df <- df_long_att1 %>%
+  filter(Present == 1) %>%
+  left_join(
+    df_trials %>% select(participant_id, question, trial_position),
+    by = c("participant_id", "question")
+  )
+
+# Overall trend
+m_learn <- glmer(
+  Reported ~ scale(trial_position) + ErrorType1 +
+    (1 | participant_id) + (1 | question),
+  data    = learning_df,
+  family  = binomial,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+cat("Learning effect in error detection:\n")
+cat("GLMER: Reported ~ trial_position + ErrorType + (1|participant) + (1|question)\n\n")
+summary(m_learn)
+
+# Mean detection rate by trial quartile
+learning_df %>%
+  mutate(quartile = cut(trial_position, breaks = c(0, 6, 12, 18, 24),
+                        labels = c("Q1 (1-6)", "Q2 (7-12)", "Q3 (13-18)", "Q4 (19-24)"))) %>%
+  group_by(quartile, ErrorType) %>%
+  summarise(detection_rate = mean(Reported), n = n(), .groups = "drop") %>%
+  pivot_wider(names_from = ErrorType, values_from = c(detection_rate, n)) %>%
+  knitr::kable(digits = 3, caption = "Detection rate by trial position quartile")
+```
+
+
+# 7. Sequential Trial Effects
+
+Does the condition or detection outcome on trial N affect trial N+1?
+
+```{r sequential-effects}
+# Build transition data from consecutive target trials
+transitions <- df_trials %>%
+  arrange(participant_id, trial_position) %>%
+  group_by(participant_id) %>%
+  mutate(
+    # Previous trial info
+    prev_condition     = lag(condition),
+    prev_reported      = lag(err_reported_first == "y"),
+    prev_type          = lag(err_type_first),
+    prev_phon_detected = lag(phon_detected_first),
+    prev_nonphon_detected = lag(nonphon_detected_first)
+  ) %>%
+  ungroup() %>%
+  filter(!is.na(prev_condition))
+
+cat(sprintf("Total target-to-target transitions: %d from %d participants\n\n",
+            nrow(transitions), n_distinct(transitions$participant_id)))
+
+# Analysis 1: Does reporting on trial N predict reporting on N+1?
+any_detected_curr <- transitions %>%
+  mutate(reported_any = err_reported_first == "y")
+
+after_report <- any_detected_curr %>%
+  filter(prev_reported == TRUE) %>%
+  summarise(rate = mean(reported_any), n = n())
+
+after_no_report <- any_detected_curr %>%
+  filter(prev_reported == FALSE) %>%
+  summarise(rate = mean(reported_any), n = n())
+
+# Chi-squared test
+tab <- table(
+  Previous = any_detected_curr$prev_reported,
+  Current  = any_detected_curr$reported_any
+)
+chi_res <- chisq.test(tab)
+
+cat("Does reporting on trial N predict reporting on N+1?\n")
+cat(sprintf("  After REPORTING error:     %.3f report on next (N=%d)\n",
+            after_report$rate, after_report$n))
+cat(sprintf("  After NOT reporting error: %.3f report on next (N=%d)\n",
+            after_no_report$rate, after_no_report$n))
+cat(sprintf("  Chi-squared: X2=%.3f, p=%.4f\n\n", chi_res$statistic, chi_res$p.value))
+
+# Analysis 2: Does error TYPE on trial N affect what's reported on N+1?
+cat("Does error TYPE on trial N affect detection on N+1?\n")
+
+prev_type_effects <- any_detected_curr %>%
+  mutate(
+    prev_category = case_when(
+      prev_reported & prev_type %in% c("p", "p?")                  ~ "Phon detected",
+      prev_reported & prev_type %in% c("np", "np?")                ~ "NonPhon detected",
+      prev_reported & prev_type %in% c("both", "both?")            ~ "Both detected",
+      !prev_reported                                                ~ "Nothing detected",
+      TRUE                                                          ~ "Other"
+    )
+  ) %>%
+  filter(prev_category != "Other") %>%
+  group_by(prev_category) %>%
+  summarise(
+    next_report_rate = mean(reported_any),
+    n = n(),
+    .groups = "drop"
+  )
+
+prev_type_effects %>%
+  knitr::kable(digits = 3, caption = "Next-trial report rate by previous detection type")
+```
+
+```{r randomization-check}
+# Was trial order randomized?
+item_positions <- df_trials %>%
+  group_by(question) %>%
+  summarise(
+    n_participants = n(),
+    n_positions    = n_distinct(trial_position),
+    min_pos = min(trial_position),
+    max_pos = max(trial_position),
+    .groups = "drop"
+  ) %>%
+  filter(n_participants >= 5)
+
+n_varied <- sum(item_positions$n_positions > 1)
+cat(sprintf("\nRandomization check:\n"))
+cat(sprintf("  Items with >=5 participants: %d\n", nrow(item_positions)))
+cat(sprintf("  Items appearing in different positions: %d\n", n_varied))
+cat(sprintf("  -> %s\n",
+            if (n_varied / nrow(item_positions) > 0.5)
+              "YES, trial order was randomized"
+            else "Trial order appears FIXED"))
+```
+
+
+# 8. Re-exposure / Replay Analysis
+
+```{r reexposure-rates}
+# Count re-exposure usage per participant
+reexposure_summary <- df_trials %>%
+  group_by(participant_id) %>%
+  summarise(
+    total_trials = n(),
+    n_replayed   = sum(second_attempt_used),
+    replay_rate  = n_replayed / total_trials,
+    .groups = "drop"
+  )
+
+cat("Re-exposure usage:\n")
+cat(sprintf("  Participants: %d\n", nrow(reexposure_summary)))
+cat(sprintf("  Replay rate: M=%.3f, SD=%.3f, median=%.3f, range=[%.3f, %.3f]\n",
+            mean(reexposure_summary$replay_rate),
+            sd(reexposure_summary$replay_rate),
+            median(reexposure_summary$replay_rate),
+            min(reexposure_summary$replay_rate),
+            max(reexposure_summary$replay_rate)))
+cat(sprintf("  Total replays per participant: M=%.1f, SD=%.1f, range=[%d, %d]\n",
+            mean(reexposure_summary$n_replayed),
+            sd(reexposure_summary$n_replayed),
+            min(reexposure_summary$n_replayed),
+            max(reexposure_summary$n_replayed)))
+```
+
+```{r reexposure-by-condition}
+# Replay rates by condition
+reexposure_by_cond <- df_trials %>%
+  group_by(condition) %>%
+  summarise(
+    n_trials   = n(),
+    n_replayed = sum(second_attempt_used),
+    replay_rate = n_replayed / n_trials,
+    .groups = "drop"
+  )
+
+cat("\nReplay rate by condition:\n")
+reexposure_by_cond %>%
+  knitr::kable(digits = 3)
+```
+
+```{r reexposure-detection-change}
+# Does re-exposure improve detection?
+# Compare first-attempt vs. combined detection rates for participants who replayed
+
+replay_effect <- df_trials %>%
+  filter(second_attempt_used, condition != "correct") %>%
+  mutate(
+    detected_first = case_when(
+      condition == "phon_err"     ~ phon_detected_first,
+      condition == "non_phon_err" ~ nonphon_detected_first,
+      condition == "both_err"     ~ phon_detected_first | nonphon_detected_first
+    ),
+    detected_comb = case_when(
+      condition == "phon_err"     ~ phon_detected_comb,
+      condition == "non_phon_err" ~ nonphon_detected_comb,
+      condition == "both_err"     ~ phon_detected_comb | nonphon_detected_comb
+    ),
+    gained_on_replay = !detected_first & detected_comb
+  )
+
+if (nrow(replay_effect) > 0) {
+  cat("\nRe-exposure effect on detection (trials where replay was used):\n")
+  cat(sprintf("  Trials with replay in error conditions: %d\n", nrow(replay_effect)))
+  cat(sprintf("  First-attempt detection rate: %.3f\n", mean(replay_effect$detected_first)))
+  cat(sprintf("  Combined detection rate:      %.3f\n", mean(replay_effect$detected_comb)))
+  cat(sprintf("  Gained on replay:             %.3f (%d trials)\n",
+              mean(replay_effect$gained_on_replay), sum(replay_effect$gained_on_replay)))
+}
+
+# ErrorType x Presentation (first vs combined) interaction
+# Are non-phonological errors more likely to be caught on replay?
+replay_by_type <- df_long_att1 %>%
+  filter(Present == 1) %>%
+  select(participant_id, question, ErrorType, Reported_first = Reported) %>%
+  left_join(
+    df_long_comb %>%
+      filter(Present == 1) %>%
+      select(participant_id, question, ErrorType, Reported_comb = Reported),
+    by = c("participant_id", "question", "ErrorType")
+  ) %>%
+  pivot_longer(
+    cols = c(Reported_first, Reported_comb),
+    names_to = "Presentation",
+    values_to = "Reported"
+  ) %>%
+  mutate(
+    Presentation = if_else(Presentation == "Reported_first",
+                           "First", "Combined"),
+    Presentation_c = if_else(Presentation == "Combined", 0.5, -0.5),
+    ErrorType1 = if_else(ErrorType == "Non-Phonological", 1, -1)
+  )
+
+m_replay <- glmer(
+  Reported ~ ErrorType1 * Presentation_c + (1 | participant_id) + (1 | question),
+  data    = replay_by_type,
+  family  = binomial,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+cat("\nErrorType x Presentation interaction (first vs combined):\n")
+summary(m_replay)
+
+p_interaction <- extract_pval(m_replay, "ErrorType1:Presentation_c")
+cat(sprintf("\n  ErrorType x Presentation interaction: p = %.4f\n", p_interaction))
+```
+
+
+# 9. Transcription Analysis
+
+```{r transcription-helpers}
+# Text substitution helper
 mgsub <- function(pattern, replacement, x, ...) {
   result <- x
   for (i in seq_along(pattern))
@@ -952,6 +1169,7 @@ mgsub <- function(pattern, replacement, x, ...) {
   result
 }
 
+# Keyword scoring (pmatch-based)
 num.keywords.correct <- function(transcription, keywords) {
   keys  <- gsub("[[:punct:]]", "", tolower(as.character(keywords)))
   trans <- gsub("[[:punct:]]", "", tolower(as.character(transcription)))
@@ -959,6 +1177,7 @@ num.keywords.correct <- function(transcription, keywords) {
                     unlist(strsplit(trans, " ")))))
 }
 
+# Per-keyword scoring for detailed analysis
 check_keywords_correct <- function(transcription, keywords,
                                     global_row_id, filename, participant_id) {
   keys  <- gsub("[[:punct:]]", "", tolower(as.character(keywords)))
@@ -973,31 +1192,19 @@ check_keywords_correct <- function(transcription, keywords,
     is_correct     = keys.list %in% trans.list
   )
 }
+```
 
-clean_questionnaire_robust_trans <- function(file_path) {
-  d <- read_csv(file_path, show_col_types = FALSE)
-  if (!all(c("stimuli_presented","response_value") %in% names(d))) return(NULL)
-  d %>%
-    filter(stimuli_presented %in% c("exposure_spanish_accent","exposure_spanish")) %>%
-    select(participant_id, question_id = stimuli_presented, answer = response_value) %>%
-    distinct() %>%
-    pivot_wider(names_from = question_id, values_from = answer) %>%
-    rename_with(~ paste0("quest_", .), .cols = -participant_id)
-}
-
+```{r transcription-load}
+# Load transcription data
 process_transcription_batch <- function(folder_name, group_label,
                                          batch_label, has_questionnaire) {
-  message(paste("Processing Batch:", batch_label, "..."))
   target_folder <- file.path("../data/preprocessed", folder_name)
-
   trans_files <- list.files(target_folder, pattern = "transcription_data.csv",
                              full.names = TRUE, recursive = TRUE)
   if (length(trans_files) == 0) { warning(paste("! No data for", batch_label)); return(NULL) }
 
   d_combined <- map_dfr(trans_files, function(f_path) {
-    tmp  <- read_csv(f_path, show_col_types = FALSE) %>% mutate(across(everything(), as.character))
-    tmp$run_type <- if_else(str_starts(basename(f_path), "test_run"), "Test Run", "Official")
-    tmp
+    read_csv(f_path, show_col_types = FALSE) %>% mutate(across(everything(), as.character))
   })
 
   key_file <- "../data/transcription_scoring.txt"
@@ -1020,17 +1227,25 @@ process_transcription_batch <- function(folder_name, group_label,
       c("&lt&","&gt&","&quot&","&comma&","&semicol&","&pipe&","&apos&"),
       c("<",   ">",   '"',     ",",      ";",         "|",     "'"),
       Transcription))
-    NumKeywordsCorrect <- mapply(num.keywords.correct, Transcription, Keywords)
+    NumKeywordsCorrect  <- mapply(num.keywords.correct, Transcription, Keywords)
     PropKeywordsCorrect <- NumKeywordsCorrect / as.numeric(NumKeywords)
   })
 
+  # Add questionnaire data
   d.all.m$quest_exposure_spanish_accent <- NA_character_
   if (has_questionnaire) {
     q_files <- list.files(target_folder, pattern = "questionnaire_data.csv",
                            full.names = TRUE, recursive = TRUE)
     if (length(q_files) > 0) {
-      df_q <- map_dfr(q_files, clean_questionnaire_robust_trans) %>%
-        group_by(participant_id) %>% slice(1) %>% ungroup()
+      df_q <- map_dfr(q_files, function(f) {
+        read_csv(f, show_col_types = FALSE) %>%
+          filter(stimuli_presented %in% c("exposure_spanish_accent", "exposure_spanish")) %>%
+          select(participant_id, question_id = stimuli_presented, answer = response_value) %>%
+          distinct() %>%
+          pivot_wider(names_from = question_id, values_from = answer) %>%
+          rename_with(~ paste0("quest_", .), .cols = -participant_id)
+      }) %>% group_by(participant_id) %>% slice(1) %>% ungroup()
+
       d.all.m <- left_join(d.all.m, df_q, by = "participant_id")
       if ("quest_exposure_spanish_accent.y" %in% names(d.all.m)) {
         d.all.m$quest_exposure_spanish_accent <- d.all.m$quest_exposure_spanish_accent.y
@@ -1045,6 +1260,7 @@ process_transcription_batch <- function(folder_name, group_label,
   d.all.m
 }
 
+# Load both batches
 batch_manifest_trans <- tribble(
   ~folder_name,         ~group_label, ~batch_label,   ~has_questionnaire,
   "transcrip_baseline", "baseline",   "Baseline",     TRUE,
@@ -1053,114 +1269,857 @@ batch_manifest_trans <- tribble(
 
 df_transcription_raw <- pmap_dfr(batch_manifest_trans, process_transcription_batch)
 
-eligible_ids <- if (exists("df_clean_all_trials"))
-  unique(df_clean_all_trials$participant_id) else
-  unique(df_transcription_raw$participant_id)
+# Filter to eligible participants (exclude attention check failures)
+eligible_ids <- unique(df_trials$participant_id)
 
 df_transcription_all <- df_transcription_raw %>%
   filter(batch_id == "Baseline" | participant_id %in% eligible_ids) %>%
+  # Also exclude one problematic participant from baseline
   filter(participant_id !=
            "6df14d8680851e21a1bbe20d8e32fc04bc30979c5d654dc35ef36bc2910b9765") %>%
   group_by(participant_id) %>%
   mutate(trial_order = row_number()) %>%
   ungroup()
 
-print(df_transcription_all %>%
-        group_by(batch_id) %>%
-        summarise(N = n_distinct(participant_id)))
+df_transcription_all %>%
+  group_by(batch_id) %>%
+  summarise(N = n_distinct(participant_id), Trials = n()) %>%
+  knitr::kable(caption = "Transcription data summary")
 ```
 
-```{r transcription-plots, fig.width=10, fig.height=6, message=FALSE, warning=FALSE, echo=FALSE}
-run_transcription_plots <- function(df_input) {
+## 9.1 Group Comparison (Baseline vs. Error-Detection)
 
-  summ_group <- df_input %>%
-    group_by(batch_id) %>%
-    summarise(stats = list(smean.cl.boot(PropKeywordsCorrect)), .groups = "drop") %>%
-    tidyr::unnest_wider(stats)
+```{r transcription-group-comparison, fig.width=10, fig.height=6}
+# Per-participant means
+pts <- df_transcription_all %>%
+  group_by(batch_id, participant_id) %>%
+  summarise(M = mean(PropKeywordsCorrect, na.rm = TRUE), .groups = "drop")
 
-  # Group comparison
-  pts <- df_input %>%
-    group_by(batch_id, participant_id) %>%
-    summarise(M = mean(PropKeywordsCorrect, na.rm = TRUE), .groups = "drop")
+# Bootstrapped group means
+summ_group <- df_transcription_all %>%
+  group_by(batch_id) %>%
+  summarise(stats = list(smean.cl.boot(PropKeywordsCorrect)), .groups = "drop") %>%
+  unnest_wider(stats)
 
- p5 <- ggplot(summ_group, aes(x = batch_id, y = Mean, color = batch_id)) +
-    geom_jitter(data = pts, aes(y = M),
-                width = 0.12, alpha = 0.25, size = 2, color = "grey55") +
-    geom_errorbar(aes(ymin = Lower, ymax = Upper),
-                  width = 0.12, linewidth = 1.3) +
-    geom_point(size = 6, shape = 19) +
-    geom_text(aes(label = percent(Mean, accuracy = 0.1)),
-              hjust = -0.45, fontface = "bold", size = 5.5) +
-    scale_color_manual(values = c("Baseline" = "#777777", "Main Batch 3" = COL_NONPHON)) +
-    scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
-    labs(title    = "Accent Adaptation: Group Comparison",
-         subtitle = "Mean keyword accuracy  |  Error bars = 95% bootstrap CI",
-         y = "Mean Accuracy", x = NULL) +
-    theme(legend.position = "none")
+p5 <- ggplot(summ_group, aes(x = batch_id, y = Mean, color = batch_id)) +
+  geom_jitter(data = pts, aes(y = M),
+              width = 0.12, alpha = 0.25, size = 2, color = "grey55") +
+  geom_errorbar(aes(ymin = Lower, ymax = Upper),
+                width = 0.12, linewidth = 1.3) +
+  geom_point(size = 6, shape = 19) +
+  geom_text(aes(label = percent(Mean, accuracy = 0.1)),
+            hjust = -0.45, fontface = "bold", size = 5.5) +
+  scale_color_manual(values = c("Baseline" = "#777777", "Main Batch 3" = COL_NONPHON)) +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
+  labs(title = "Accent Adaptation: Group Comparison",
+       subtitle = "Mean keyword accuracy | Error bars = 95% bootstrap CI",
+       y = "Mean Accuracy", x = NULL) +
+  theme(legend.position = "none")
 
-  # Hardest keywords
-  df_input <- df_input %>% mutate(global_row_id = row_number())
-  kw_df <- pmap_dfr(list(df_input$Transcription, df_input$Keywords,
-                          df_input$global_row_id, df_input$Filename,
-                          df_input$participant_id), check_keywords_correct) %>%
-    left_join(df_input %>% select(global_row_id, batch_id), by = "global_row_id")
+p5
+```
 
-  hardest <- kw_df %>%
-    group_by(keyword, batch_id) %>%
-    summarise(P = mean(is_correct, na.rm = TRUE), .groups = "drop") %>%
-    group_by(batch_id) %>%
-    arrange(P) %>%
-    slice_head(n = 10)
+```{r transcription-stats}
+# Welch t-test (participant-level means)
+df_agg <- df_transcription_all %>%
+  group_by(participant_id, batch_id) %>%
+  summarise(Mean_Accuracy = mean(PropKeywordsCorrect, na.rm = TRUE), .groups = "drop") %>%
+  mutate(batch_id = factor(batch_id, levels = c("Baseline", "Main Batch 3")))
 
-  p6 <- ggplot(hardest,
-                   aes(x = reorder_within(keyword, P, batch_id), y = P, fill = batch_id)) +
-    geom_col(color = "white", alpha = 0.9) +
-    scale_x_reordered() +
-    facet_wrap(~ batch_id, scales = "free_y") +
-    coord_flip() +
-    scale_fill_manual(values = c("Baseline" = "#888888", "Main Batch 3" = COL_NONPHON)) +
-    scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
-    labs(title = "Hardest Keywords by Group",
-         x = NULL, y = "Proportion Correct") +
-    theme(legend.position = "none")
+t_res <- t.test(Mean_Accuracy ~ batch_id, data = df_agg, var.equal = FALSE)
+eff   <- df_agg %>% cohens_d(Mean_Accuracy ~ batch_id, var.equal = FALSE)
 
-  print(p5)
-  print(p6)
+cat("Welch t-test (participant-level means):\n")
+print(t_res)
+cat(sprintf("Cohen's d: %.3f\n\n", eff$effsize))
+
+# LMM: Accuracy ~ Group + (1|Participant) + (1|Sentence)
+df_lmm <- df_transcription_all %>%
+  mutate(
+    batch_id       = factor(batch_id, levels = c("Baseline", "Main Batch 3")),
+    participant_id = factor(participant_id),
+    Filename       = factor(Filename)
+  )
+
+lmm_trans <- lmer(
+  PropKeywordsCorrect ~ batch_id + (1 | participant_id) + (1 | Filename),
+  data = df_lmm
+)
+
+cat("LMM: Accuracy ~ Group + (1|Participant) + (1|Sentence)\n")
+summary(lmm_trans)
+
+coefs <- fixef(lmm_trans)
+slope <- coefs["batch_idMain Batch 3"]
+p_lmm <- summary(lmm_trans)$coefficients["batch_idMain Batch 3", "Pr(>|t|)"]
+cat(sprintf("\nBaseline accuracy: %.1f%%\n", 100 * coefs["(Intercept)"]))
+cat(sprintf("Adaptation effect: %+.1f%%\n", 100 * slope))
+cat(sprintf("LMM p-value: %.4f (%s)\n", p_lmm, if (p_lmm < .05) "SIGNIFICANT" else "n.s."))
+```
+
+## 9.2 Learning Effects in Transcription
+
+```{r transcription-learning, fig.width=12, fig.height=6}
+# Does transcription accuracy improve across the 20 sentences?
+learning_trans <- df_transcription_all %>%
+  group_by(batch_id, trial_order) %>%
+  summarise(
+    M  = mean(PropKeywordsCorrect, na.rm = TRUE),
+    SE = sd(PropKeywordsCorrect, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+# Per-group linear trends
+for (grp in unique(df_transcription_all$batch_id)) {
+  grp_data <- df_transcription_all %>% filter(batch_id == grp)
+  lm_fit <- lm(PropKeywordsCorrect ~ trial_order, data = grp_data)
+  slope  <- coef(lm_fit)["trial_order"]
+  p_val  <- summary(lm_fit)$coefficients["trial_order", "Pr(>|t|)"]
+  r_val  <- sqrt(summary(lm_fit)$r.squared)
+  cat(sprintf("%s: slope=%.4f, r=%.3f, p=%.4f (accuracy %s by %.2f pp per sentence)\n",
+              grp, slope, r_val, p_val,
+              if (slope > 0) "improves" else "declines",
+              abs(slope) * 100))
 }
 
-run_transcription_plots(df_transcription_all)
+p_learn <- ggplot(learning_trans, aes(x = trial_order, y = M, color = batch_id)) +
+  geom_errorbar(aes(ymin = M - SE, ymax = M + SE), width = 0.3, alpha = 0.5) +
+  geom_point(size = 3) +
+  geom_line(linewidth = 1) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", linewidth = 0.8) +
+  scale_color_manual(values = c("Baseline" = "#777777", "Main Batch 3" = COL_NONPHON)) +
+  scale_y_continuous(labels = percent_format(), limits = c(0.3, 0.9)) +
+  scale_x_continuous(breaks = 1:20) +
+  labs(title = "Learning Effect During Transcription",
+       x = "Sentence Position (1-20)", y = "Proportion Keywords Correct",
+       color = "Group") +
+  theme(legend.position = "top")
+
+p_learn
+ggsave("figure_learning_effect.tiff", p_learn, width = 12, height = 6, dpi = 300)
 ```
 
-```{r transcription-stats, message=FALSE, warning=FALSE, echo=FALSE}
-run_adaptation_stats <- function(df_input) {
-  df_stats <- df_input %>%
-    mutate(batch_id       = factor(batch_id, levels = c("Baseline", "Main Batch 3")),
-           participant_id = factor(participant_id),
-           Filename       = factor(Filename))
+## 9.3 Hardest Keywords
 
-  message("Analysis 1: Welch t-test (participant-level means)")
-  df_agg  <- df_stats %>%
-    group_by(participant_id, batch_id) %>%
-    summarise(Mean_Accuracy = mean(PropKeywordsCorrect, na.rm = TRUE), .groups = "drop")
-  t_res   <- t_test(df_agg, Mean_Accuracy ~ batch_id, var.equal = FALSE)
-  eff     <- df_agg %>% cohens_d(Mean_Accuracy ~ batch_id, var.equal = FALSE)
-  print(t_res)
-  message(paste("Cohen's d:", round(eff$effsize, 3)))
+```{r hardest-keywords, fig.width=12, fig.height=8}
+# Keyword-level analysis
+df_kw <- df_transcription_all %>%
+  mutate(global_row_id = row_number())
 
-  message("Analysis 2: LMM  Accuracy ~ Group + (1|Participant) + (1|Sentence)")
-  lmm <- lmer(PropKeywordsCorrect ~ batch_id + (1 | participant_id) + (1 | Filename),
-               data = df_stats)
-  print(summary(lmm))
+kw_df <- pmap_dfr(list(
+  df_kw$Transcription, df_kw$Keywords,
+  df_kw$global_row_id, df_kw$Filename, df_kw$participant_id
+), check_keywords_correct) %>%
+  left_join(df_kw %>% select(global_row_id, batch_id), by = "global_row_id")
 
-  coefs <- fixef(lmm)
-  slope <- coefs["batch_idMain Batch 3"]
-  p_lmm <- summary(lmm)$coefficients["batch_idMain Batch 3", "Pr(>|t|)"]
-  message(paste0("Baseline accuracy:   ", percent(coefs["(Intercept)"], 0.1)))
-  message(paste0("Adaptation effect:   ", ifelse(slope > 0, "+", ""),
-                 percent(slope, 0.1)))
-  message(if (p_lmm < .05) "SIGNIFICANT" else "NOT SIGNIFICANT")
+hardest <- kw_df %>%
+  group_by(keyword, batch_id) %>%
+  summarise(P = mean(is_correct, na.rm = TRUE), .groups = "drop") %>%
+  group_by(batch_id) %>%
+  arrange(P) %>%
+  slice_head(n = 10)
+
+p6 <- ggplot(hardest,
+             aes(x = reorder_within(keyword, P, batch_id), y = P, fill = batch_id)) +
+  geom_col(color = "white", alpha = 0.9) +
+  scale_x_reordered() +
+  facet_wrap(~ batch_id, scales = "free_y") +
+  coord_flip() +
+  scale_fill_manual(values = c("Baseline" = "#888888", "Main Batch 3" = COL_NONPHON)) +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
+  labs(title = "Hardest Keywords by Group", x = NULL, y = "Proportion Correct") +
+  theme(legend.position = "none")
+
+p6
+```
+
+## 9.4 Accent-Relevant vs. Non-Accent Keywords
+
+```{r accent-keyword-group-comparison, fig.width=12, fig.height=6}
+# keyword_contrast is defined in Section 11 setup — define it here if not yet available
+if (!exists("keyword_contrast")) {
+  keyword_contrast <- bind_rows(
+    tribble(
+      ~keyword,      ~contrast,
+      "rip",         "/ɪ/→/i/",
+      "ship",        "/ɪ/→/i/",
+      "his",         "/ɪ/→/i/",
+      "she",         "/ʃ/→/s/",
+      "should",      "/ʃ/→/s/",
+      "issue",       "/ʃ/→/s/",
+      "cloud",       "/k/→/g/",
+      "commented",   "/k/→/g/",
+      "consume",     "/k/→/g/",
+      "colleague",   "/k/→/g/",
+      "considered",  "/k/→/g/",
+      "closer",      "/k/→/g/",
+      "sky",         "/k/→/g/",
+      "comes",       "/k/→/g/",
+      "scared",      "/k/→/g/",
+      "wrath",       "/θ/→/t/",
+      "math",        "/θ/→/t/",
+      "bath",        "/θ/→/t/",
+      "booth",       "/θ/→/t/",
+      "something",   "/θ/→/t/",
+      "with",        "/θ/→/t/",
+      "value",       "/v/→/b/",
+      "have",        "/v/→/b/",
+      "obvious",     "/v/→/b/",
+      "full",        "/ʊ/→/u/",
+      "look",        "/ʊ/→/u/"
+    ),
+    tribble(
+      ~keyword,    ~contrast,
+      "weep",      "/ɪ/→/i/",
+      "feet",      "/ɪ/→/i/",
+      "peel",      "/ɪ/→/i/",
+      "bean",      "/ɪ/→/i/",
+      "lead",      "/ɪ/→/i/",
+      "leak",      "/ɪ/→/i/",
+      "heat",      "/ɪ/→/i/",
+      "greed",     "/ɪ/→/i/",
+      "sleep",     "/ɪ/→/i/",
+      "cheek",     "/ɪ/→/i/",
+      "theme",     "/ɪ/→/i/",
+      "heel",      "/ɪ/→/i/",
+      "bead",      "/ɪ/→/i/",
+      "sloth",     "/ɪ/→/i/"
+    )
+  )
 }
 
-run_adaptation_stats(df_transcription_all)
+# Tag each keyword as accent-relevant or not
+kw_df <- kw_df %>%
+  mutate(accent_relevant = keyword %in% keyword_contrast$keyword)
+
+cat(sprintf("Total keyword observations: %d\n", nrow(kw_df)))
+cat(sprintf("  Accent-relevant: %d (keywords: %d unique)\n",
+            sum(kw_df$accent_relevant),
+            n_distinct(kw_df$keyword[kw_df$accent_relevant])))
+cat(sprintf("  Non-accent:      %d (keywords: %d unique)\n\n",
+            sum(!kw_df$accent_relevant),
+            n_distinct(kw_df$keyword[!kw_df$accent_relevant])))
+
+# Per-participant accuracy for accent-relevant keywords only
+accent_pp <- kw_df %>%
+  filter(accent_relevant) %>%
+  group_by(batch_id, participant_id) %>%
+  summarise(accuracy = mean(is_correct, na.rm = TRUE), .groups = "drop")
+
+# Per-participant accuracy for non-accent keywords
+nonaccent_pp <- kw_df %>%
+  filter(!accent_relevant) %>%
+  group_by(batch_id, participant_id) %>%
+  summarise(accuracy = mean(is_correct, na.rm = TRUE), .groups = "drop")
+
+# Group means
+cat("Accent-relevant keywords:\n")
+accent_pp %>%
+  group_by(batch_id) %>%
+  summarise(M = mean(accuracy), SD = sd(accuracy), N = n(), .groups = "drop") %>%
+  knitr::kable(digits = 3, caption = "Accent-relevant keyword accuracy by group")
+
+cat("\nNon-accent keywords:\n")
+nonaccent_pp %>%
+  group_by(batch_id) %>%
+  summarise(M = mean(accuracy), SD = sd(accuracy), N = n(), .groups = "drop") %>%
+  knitr::kable(digits = 3, caption = "Non-accent keyword accuracy by group")
 ```
 
+```{r accent-keyword-stats}
+# ---- Accent-relevant keywords: group comparison ----
+cat("=== Accent-relevant keywords ===\n\n")
+
+t_accent <- t.test(accuracy ~ batch_id, data = accent_pp, var.equal = FALSE)
+d_accent <- accent_pp %>%
+  mutate(batch_id = factor(batch_id, levels = c("Baseline", "Main Batch 3"))) %>%
+  cohens_d(accuracy ~ batch_id, var.equal = FALSE)
+
+cat(sprintf("Welch t-test: t(%.1f) = %.3f, p = %.4f\n",
+            t_accent$parameter, t_accent$statistic, t_accent$p.value))
+cat(sprintf("Cohen's d = %.3f\n\n", d_accent$effsize))
+
+# LMM on accent-relevant keywords (trial-level)
+kw_accent_lmm <- kw_df %>%
+  filter(accent_relevant) %>%
+  mutate(
+    batch_id       = factor(batch_id, levels = c("Baseline", "Main Batch 3")),
+    participant_id = factor(participant_id),
+    keyword        = factor(keyword)
+  )
+
+lmm_accent <- glmer(
+  is_correct ~ batch_id + (1 | participant_id) + (1 | keyword),
+  data = kw_accent_lmm, family = binomial,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+cat("GLMER: is_correct ~ batch_id + (1|participant) + (1|keyword)\n")
+summary(lmm_accent)
+
+# ---- Non-accent keywords: group comparison ----
+cat("\n\n=== Non-accent keywords ===\n\n")
+
+t_nonaccent <- t.test(accuracy ~ batch_id, data = nonaccent_pp, var.equal = FALSE)
+d_nonaccent <- nonaccent_pp %>%
+  mutate(batch_id = factor(batch_id, levels = c("Baseline", "Main Batch 3"))) %>%
+  cohens_d(accuracy ~ batch_id, var.equal = FALSE)
+
+cat(sprintf("Welch t-test: t(%.1f) = %.3f, p = %.4f\n",
+            t_nonaccent$parameter, t_nonaccent$statistic, t_nonaccent$p.value))
+cat(sprintf("Cohen's d = %.3f\n", d_nonaccent$effsize))
+```
+
+```{r accent-keyword-plot, fig.width=12, fig.height=5}
+# Side-by-side comparison plot
+plot_data <- bind_rows(
+  accent_pp %>% mutate(kw_type = "Accent-Relevant"),
+  nonaccent_pp %>% mutate(kw_type = "Non-Accent")
+)
+
+plot_summ <- plot_data %>%
+  group_by(kw_type, batch_id) %>%
+  summarise(
+    M = mean(accuracy), SE = sd(accuracy) / sqrt(n()),
+    .groups = "drop"
+  )
+
+p_kwtype <- ggplot(plot_summ, aes(x = batch_id, y = M, fill = batch_id)) +
+  geom_col(alpha = 0.8, color = "white", width = 0.6) +
+  geom_jitter(data = plot_data, aes(y = accuracy),
+              width = 0.12, alpha = 0.2, size = 1.5, color = "grey40") +
+  geom_errorbar(aes(ymin = M - SE, ymax = M + SE), width = 0.15, linewidth = 0.8) +
+  geom_text(aes(label = percent(M, accuracy = 0.1)), vjust = -0.8, fontface = "bold", size = 4.5) +
+  facet_wrap(~ kw_type) +
+  scale_fill_manual(values = c("Baseline" = "#888888", "Main Batch 3" = COL_NONPHON)) +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
+  labs(title = "Transcription Accuracy: Accent-Relevant vs. Non-Accent Keywords",
+       subtitle = "Error bars = ±1 SE | Points = individual participants",
+       y = "Mean Keyword Accuracy", x = NULL) +
+  theme(legend.position = "none")
+
+p_kwtype
+```
+
+
+# 10. Re-exposure x Transcription Interaction
+
+```{r reexposure-transcription}
+# Correlate per-participant replay rate with transcription accuracy
+
+trans_means <- df_transcription_all %>%
+  filter(batch_id == "Main Batch 3") %>%
+  group_by(participant_id) %>%
+  summarise(trans_accuracy = mean(PropKeywordsCorrect, na.rm = TRUE), .groups = "drop")
+
+reexp_trans <- reexposure_summary %>%
+  inner_join(trans_means, by = "participant_id")
+
+cat(sprintf("Matched participants (replay + transcription): %d\n\n",
+            nrow(reexp_trans)))
+
+if (nrow(reexp_trans) >= 10) {
+  r_pearson  <- cor.test(reexp_trans$replay_rate, reexp_trans$trans_accuracy)
+  r_spearman <- cor.test(reexp_trans$replay_rate, reexp_trans$trans_accuracy,
+                          method = "spearman")
+
+  cat("Replay rate x Transcription accuracy:\n")
+  cat(sprintf("  Pearson:  r=%.3f, p=%.3f\n", r_pearson$estimate, r_pearson$p.value))
+  cat(sprintf("  Spearman: rho=%.3f, p=%.3f\n", r_spearman$estimate, r_spearman$p.value))
+
+  # Total replays x accuracy
+  r_total <- cor.test(reexp_trans$n_replayed, reexp_trans$trans_accuracy,
+                       method = "spearman")
+  cat(sprintf("  Total replay count x accuracy: rho=%.3f, p=%.3f\n",
+              r_total$estimate, r_total$p.value))
+}
+```
+
+```{r reexposure-transcription-plot, fig.width=8, fig.height=6}
+if (nrow(reexp_trans) >= 10) {
+  p_rxt <- ggplot(reexp_trans, aes(x = replay_rate, y = trans_accuracy)) +
+    geom_point(size = 3, alpha = 0.6, color = COL_NONPHON) +
+    geom_smooth(method = "lm", se = TRUE, color = "grey40", fill = "grey80") +
+    scale_x_continuous(labels = percent_format()) +
+    scale_y_continuous(labels = percent_format()) +
+    labs(
+      title = "Re-exposure Rate vs. Transcription Accuracy",
+      subtitle = sprintf("r = %.3f, p = %.3f",
+                          r_pearson$estimate, r_pearson$p.value),
+      x = "Proportion of Trials Replayed",
+      y = "Mean Keyword Accuracy"
+    )
+
+  p_rxt
+  ggsave("figure_reexposure_x_transcription.tiff", p_rxt,
+         width = 8, height = 6, dpi = 300)
+}
+```
+
+
+# 11. Similarity Metrics Analysis
+
+```{r sim-setup}
+# ---- Accent keyword mappings ----
+
+# Keywords that CHANGE under the Spanish accent (for phonological distance)
+changed_keywords <- tribble(
+  ~keyword,      ~standard,     ~accented,     ~contrast,
+  "rip",         "rip",         "reep",        "/ɪ/→/i/",
+  "ship",        "ship",        "sheep",       "/ɪ/→/i/",
+  "his",         "his",         "hees",        "/ɪ/→/i/",
+  "she",         "she",         "se",          "/ʃ/→/s/",
+  "should",      "should",      "sould",       "/ʃ/→/s/",
+  "issue",       "issue",       "issoo",       "/ʃ/→/s/",
+  "cloud",       "cloud",       "gloud",       "/k/→/g/",
+  "commented",   "commented",   "gommented",   "/k/→/g/",
+  "consume",     "consume",     "gonsume",     "/k/→/g/",
+  "colleague",   "colleague",   "golleague",   "/k/→/g/",
+  "considered",  "considered",  "gonsidered",  "/k/→/g/",
+  "closer",      "closer",      "gloser",      "/k/→/g/",
+  "sky",         "sky",         "sgy",         "/k/→/g/",
+  "comes",       "comes",       "gomes",       "/k/→/g/",
+  "scared",      "scared",      "sgared",      "/k/→/g/",
+  "wrath",       "wrath",       "wrat",        "/θ/→/t/",
+  "math",        "math",        "mat",         "/θ/→/t/",
+  "bath",        "bath",        "bat",         "/θ/→/t/",
+  "booth",       "booth",       "boot",        "/θ/→/t/",
+  "something",   "something",   "someting",    "/θ/→/t/",
+  "with",        "with",        "wit",         "/θ/→/t/",
+  "value",       "value",       "balue",       "/v/→/b/",
+  "have",        "have",        "habe",        "/v/→/b/",
+  "obvious",     "obvious",     "obbious",     "/v/→/b/",
+  "full",        "full",        "fool",        "/ʊ/→/u/",
+  "look",        "look",        "luke",        "/ʊ/→/u/"
+)
+
+# All accent-relevant keywords → contrast (including unchanged /i:/ words)
+keyword_contrast <- bind_rows(
+  changed_keywords %>% select(keyword, contrast),
+  tribble(
+    ~keyword,    ~contrast,
+    "weep",      "/ɪ/→/i/",
+    "feet",      "/ɪ/→/i/",
+    "peel",      "/ɪ/→/i/",
+    "bean",      "/ɪ/→/i/",
+    "lead",      "/ɪ/→/i/",
+    "leak",      "/ɪ/→/i/",
+    "heat",      "/ɪ/→/i/",
+    "greed",     "/ɪ/→/i/",
+    "sleep",     "/ɪ/→/i/",
+    "cheek",     "/ɪ/→/i/",
+    "theme",     "/ɪ/→/i/",
+    "heel",      "/ɪ/→/i/",
+    "bead",      "/ɪ/→/i/",
+    "sloth",     "/ɪ/→/i/"
+  )
+)
+
+# Contrast display order and colors
+contrast_order <- c("/ɪ/→/i/", "/ʃ/→/s/", "/k/→/g/", "/v/→/b/", "/ʊ/→/u/", "/θ/→/t/")
+contrast_colors <- c(
+  "/ɪ/→/i/" = "#E07B3F", "/ʃ/→/s/" = "#2B7BB9", "/k/→/g/" = "#57A75C",
+  "/v/→/b/" = "#9B6EBD", "/ʊ/→/u/" = "#D4A853", "/θ/→/t/" = "#C75B7A"
+)
+
+# Reload scoring key for sentence-level analysis
+key.df.sim <- read.delim("../data/transcription_scoring.txt", header = TRUE, sep = ",") %>%
+  mutate(Sentence = as.character(Sentence))
+
+# pmatch-style keyword matching helper
+is_pmatch <- function(keyword, trans_word) {
+  keyword == trans_word ||
+    (nchar(keyword) >= 3 &&
+     startsWith(trans_word, substr(keyword, 1, 3)) &&
+     (startsWith(trans_word, keyword) || startsWith(keyword, trans_word)))
+}
+```
+
+
+## 11.1 Phonological Distance of Transcription Errors
+
+For accent-relevant keywords that participants got wrong, are their errors closer to the accented form or the standard form?
+
+```{r metric1-phon-distance}
+df_trans_main <- df_transcription_all %>% filter(batch_id == "Main Batch 3")
+
+phon_dist_results <- list()
+
+for (i in seq_len(nrow(df_trans_main))) {
+  kws <- unlist(strsplit(tolower(gsub("[[:punct:]]", "", df_trans_main$Keywords[i])), "\\s+"))
+  tws <- unlist(strsplit(tolower(gsub("[[:punct:]]", "", df_trans_main$Transcription[i])), "\\s+"))
+
+  for (kw in kws) {
+    if (!(kw %in% changed_keywords$keyword)) next
+
+    ck <- changed_keywords[changed_keywords$keyword == kw, ]
+
+    # Check if correctly matched (pmatch-style)
+    matched <- any(vapply(tws, function(tw) is_pmatch(kw, tw), logical(1)))
+    if (matched || length(tws) == 0) next
+
+    # Keyword NOT matched — find closest word to the standard form
+    dists_std <- as.integer(adist(tws, ck$standard))
+    best_idx  <- which.min(dists_std)
+    best_word <- tws[best_idx]
+
+    d_std <- as.integer(adist(best_word, ck$standard))
+    d_acc <- as.integer(adist(best_word, ck$accented))
+
+    direction <- if (d_acc < d_std) "accent" else if (d_std < d_acc) "standard" else "equal"
+
+    phon_dist_results[[length(phon_dist_results) + 1]] <- tibble(
+      keyword = kw, contrast = ck$contrast,
+      standard = ck$standard, accented = ck$accented,
+      written = best_word,
+      dist_to_standard = d_std, dist_to_accented = d_acc,
+      direction = direction
+    )
+  }
+}
+
+phon_dist_df <- bind_rows(phon_dist_results)
+
+cat(sprintf("Accent-relevant keywords that CHANGE under accent: %d\n", nrow(changed_keywords)))
+cat(sprintf("Total incorrect transcriptions of these keywords: %d\n\n", nrow(phon_dist_df)))
+
+# Direction summary
+dir_counts <- table(phon_dist_df$direction)
+total_err  <- nrow(phon_dist_df)
+
+cat("Direction of errors:\n")
+for (d in c("accent", "standard", "equal")) {
+  n_d <- if (d %in% names(dir_counts)) dir_counts[[d]] else 0L
+  cat(sprintf("  Closer to %-10s form: %d (%.1f%%)\n",
+              toupper(d), n_d, n_d / max(total_err, 1) * 100))
+}
+
+# By contrast
+cat("\nError direction by contrast:\n")
+phon_dist_df %>%
+  count(contrast, direction) %>%
+  pivot_wider(names_from = direction, values_from = n, values_fill = 0) %>%
+  mutate(total = rowSums(across(where(is.numeric)))) %>%
+  arrange(match(contrast, contrast_order)) %>%
+  knitr::kable()
+```
+
+```{r metric1-stats}
+# Binomial test: proportion toward accent vs standard (excluding ties)
+directional  <- phon_dist_df %>% filter(direction != "equal")
+n_directional <- nrow(directional)
+n_accent      <- sum(directional$direction == "accent")
+
+if (n_directional > 0) {
+  binom_result <- binom.test(n_accent, n_directional, p = 0.5)
+  cat("Binomial test (accent vs standard, excluding ties):\n")
+  cat(sprintf("  N = %d, toward accent = %d (%.1f%%)\n",
+              n_directional, n_accent, n_accent / n_directional * 100))
+  cat(sprintf("  p = %.4f\n\n", binom_result$p.value))
+}
+
+# Paired t-test: mean edit distance to standard vs accented
+if (nrow(phon_dist_df) > 0) {
+  t_result <- t.test(phon_dist_df$dist_to_standard,
+                     phon_dist_df$dist_to_accented, paired = TRUE)
+  cat(sprintf("Mean edit distance to standard: %.2f (SD = %.2f)\n",
+              mean(phon_dist_df$dist_to_standard), sd(phon_dist_df$dist_to_standard)))
+  cat(sprintf("Mean edit distance to accented:  %.2f (SD = %.2f)\n",
+              mean(phon_dist_df$dist_to_accented), sd(phon_dist_df$dist_to_accented)))
+  cat(sprintf("Paired t-test: t(%.0f) = %.3f, p = %.4f\n",
+              t_result$parameter, t_result$statistic, t_result$p.value))
+}
+
+# Show example errors
+cat("\nExample errors (first 15):\n")
+phon_dist_df %>%
+  head(15) %>%
+  mutate(label = sprintf("  '%s' -> wrote '%s' (d_std=%d, d_acc=%d, -> %s)",
+                          keyword, written, dist_to_standard, dist_to_accented, direction)) %>%
+  pull(label) %>%
+  cat(sep = "\n")
+```
+
+
+## 11.2 Accent-Distance Effect
+
+```{r metric2-detection-by-contrast}
+# A) Error detection rates by phonological contrast
+
+has_phon_details <- "phon_err_details" %in% names(df_all)
+detection_rates  <- NULL
+
+if (has_phon_details) {
+  trial_contrasts <- df_all %>%
+    filter(stim_type == "target",
+           !is.na(phon_err_details),
+           phon_err_details != "", phon_err_details != "NA") %>%
+    select(participant_id, question, phon_err_details) %>%
+    distinct(participant_id, question, .keep_all = TRUE) %>%
+    mutate(contrast = case_when(
+      str_detect(phon_err_details, fixed("/ɪ/")) ~ "/ɪ/→/i/",
+      str_detect(phon_err_details, fixed("/ʃ/")) ~ "/ʃ/→/s/",
+      str_detect(phon_err_details, fixed("/k/")) ~ "/k/→/g/",
+      str_detect(phon_err_details, fixed("/v/")) ~ "/v/→/b/",
+      str_detect(phon_err_details, fixed("/ʊ/")) ~ "/ʊ/→/u/",
+      str_detect(phon_err_details, fixed("/θ/")) ~ "/θ/→/t/",
+      str_detect(phon_err_details, fixed("/i/")) ~ "/ɪ/→/i/",
+      str_detect(phon_err_details, fixed("/g/")) ~ "/k/→/g/",
+      str_detect(phon_err_details, fixed("/b/")) ~ "/v/→/b/",
+      str_detect(phon_err_details, fixed("/u/")) ~ "/ʊ/→/u/",
+      str_detect(phon_err_details, fixed("/t/")) ~ "/θ/→/t/",
+      str_detect(phon_err_details, fixed("/s/")) ~ "/ʃ/→/s/",
+      TRUE ~ NA_character_
+    ))
+
+  det_by_contrast <- df_trials %>%
+    filter(condition %in% c("phon_err", "both_err")) %>%
+    left_join(trial_contrasts, by = c("participant_id", "question")) %>%
+    filter(!is.na(contrast))
+
+  detection_rates <- det_by_contrast %>%
+    group_by(contrast) %>%
+    summarise(
+      detected = sum(phon_detected_first, na.rm = TRUE),
+      total    = n(),
+      rate     = detected / total,
+      .groups  = "drop"
+    ) %>%
+    mutate(contrast = factor(contrast, levels = contrast_order))
+
+  cat("A) Error detection rates by phonological contrast\n\n")
+  detection_rates %>% arrange(contrast) %>% knitr::kable(digits = 3)
+} else {
+  cat("Note: phon_err_details column not found — skipping detection-by-contrast.\n")
+}
+```
+
+```{r metric2-transcription-by-contrast}
+# B) Transcription accuracy of accent-relevant keywords by contrast
+
+kw_by_contrast <- kw_df %>%
+  filter(batch_id == "Main Batch 3") %>%
+  inner_join(keyword_contrast, by = "keyword") %>%
+  group_by(contrast) %>%
+  summarise(
+    correct  = sum(is_correct),
+    total    = n(),
+    accuracy = correct / total,
+    .groups  = "drop"
+  ) %>%
+  mutate(contrast = factor(contrast, levels = contrast_order))
+
+cat("\nB) Transcription accuracy of accent-relevant keywords by contrast\n\n")
+kw_by_contrast %>% arrange(contrast) %>% knitr::kable(digits = 3)
+```
+
+```{r metric2-plot, fig.width=14, fig.height=6}
+p_det <- NULL
+
+if (!is.null(detection_rates) && nrow(detection_rates) > 0) {
+  p_det <- ggplot(detection_rates, aes(x = contrast, y = rate, fill = contrast)) +
+    geom_col(alpha = 0.8, color = "white") +
+    scale_fill_manual(values = contrast_colors) +
+    scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
+    geom_text(aes(label = sprintf("%.2f", rate)), vjust = -0.5, size = 3.5) +
+    labs(title = "Phonological Error Detection by Contrast",
+         x = NULL, y = "Detection Rate") +
+    theme(legend.position = "none")
+}
+
+p_trans <- ggplot(kw_by_contrast, aes(x = contrast, y = accuracy, fill = contrast)) +
+  geom_col(alpha = 0.8, color = "white") +
+  scale_fill_manual(values = contrast_colors) +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
+  geom_text(aes(label = sprintf("%.2f", accuracy)), vjust = -0.5, size = 3.5) +
+  labs(title = "Transcription Accuracy by Contrast",
+       x = NULL, y = "Keyword Accuracy") +
+  theme(legend.position = "none")
+
+if (!is.null(p_det)) {
+  p_det + p_trans + plot_layout(ncol = 2)
+} else {
+  p_trans
+}
+```
+
+```{r metric2-correlation}
+# C) Correlation between detection and transcription rates across contrasts
+if (!is.null(detection_rates) && nrow(detection_rates) >= 4) {
+  merged_rates <- detection_rates %>%
+    select(contrast, det_rate = rate) %>%
+    inner_join(kw_by_contrast %>% select(contrast, trans_acc = accuracy),
+               by = "contrast")
+
+  if (nrow(merged_rates) >= 4) {
+    cor_result <- cor.test(merged_rates$det_rate, merged_rates$trans_acc)
+    cat(sprintf("\nCorrelation: detection rate x transcription accuracy across contrasts\n"))
+    cat(sprintf("  Pearson r = %.3f, p = %.4f (N = %d contrasts)\n",
+                cor_result$estimate, cor_result$p.value, nrow(merged_rates)))
+  }
+}
+```
+
+
+## 11.3 Semantic Similarity
+
+```{r metric3-semantic}
+# Reconstruct intended sentence from filename; compute three similarity metrics
+
+df_sim <- df_trans_main %>%
+  mutate(
+    intended       = str_replace(Filename, "\\.wav$", "") %>% str_replace_all("_", " "),
+    trans_clean    = tolower(gsub("[[:punct:]]", "", Transcription)),
+    intended_clean = tolower(gsub("[[:punct:]]", "", intended))
+  ) %>%
+  filter(trans_clean != "", !is.na(trans_clean))
+
+cat(sprintf("Total trials with transcriptions: %d\n\n", nrow(df_sim)))
+
+# ---- A) Jaccard word overlap ----
+df_sim$jaccard <- mapply(function(int, trans) {
+  i_words <- unique(unlist(strsplit(int, "\\s+")))
+  t_words <- unique(unlist(strsplit(trans, "\\s+")))
+  n_int   <- length(intersect(i_words, t_words))
+  n_uni   <- length(union(i_words, t_words))
+  if (n_uni > 0) n_int / n_uni else 0
+}, df_sim$intended_clean, df_sim$trans_clean)
+
+cat("A) Word Overlap (Jaccard Similarity)\n")
+cat(sprintf("   M = %.3f, SD = %.3f\n", mean(df_sim$jaccard), sd(df_sim$jaccard)))
+cat(sprintf("   Median = %.3f, Range = [%.3f, %.3f]\n\n",
+            median(df_sim$jaccard), min(df_sim$jaccard), max(df_sim$jaccard)))
+
+# ---- B) TF-IDF Cosine Similarity ----
+n_trials <- nrow(df_sim)
+
+docs <- tibble(
+  doc_id = c(paste0("I_", seq_len(n_trials)), paste0("T_", seq_len(n_trials))),
+  text   = c(df_sim$intended_clean, df_sim$trans_clean)
+)
+
+# Tokenise, count, compute TF-IDF via tidytext
+doc_words <- docs %>%
+  unnest_tokens(word, text) %>%
+  count(doc_id, word) %>%
+  bind_tf_idf(word, doc_id, n)
+
+# Build TF-IDF matrix (docs x vocabulary)
+doc_ids_ordered <- c(paste0("I_", seq_len(n_trials)), paste0("T_", seq_len(n_trials)))
+
+tfidf_wide <- doc_words %>%
+  select(doc_id, word, tf_idf) %>%
+  pivot_wider(names_from = word, values_from = tf_idf, values_fill = 0)
+
+tfidf_wide <- tfidf_wide[match(doc_ids_ordered, tfidf_wide$doc_id), ]
+tfidf_mat  <- as.matrix(tfidf_wide[, -1])
+
+# Cosine similarity for each intended–transcription pair
+cosine_scores <- vapply(seq_len(n_trials), function(i) {
+  v1    <- tfidf_mat[i, ]
+  v2    <- tfidf_mat[n_trials + i, ]
+  denom <- sqrt(sum(v1^2)) * sqrt(sum(v2^2))
+  if (denom > 0) sum(v1 * v2) / denom else 0
+}, numeric(1))
+
+df_sim$cosine <- cosine_scores
+
+cat("B) TF-IDF Cosine Similarity\n")
+cat(sprintf("   M = %.3f, SD = %.3f\n", mean(cosine_scores), sd(cosine_scores)))
+cat(sprintf("   Median = %.3f, Range = [%.3f, %.3f]\n\n",
+            median(cosine_scores), min(cosine_scores), max(cosine_scores)))
+
+# ---- C) Normalised Levenshtein Similarity ----
+df_sim$lev_sim <- mapply(function(int, trans) {
+  max_len <- max(nchar(int), nchar(trans))
+  if (max_len == 0) return(1)
+  1 - as.integer(adist(int, trans)) / max_len
+}, df_sim$intended_clean, df_sim$trans_clean)
+
+cat("C) Normalised Levenshtein Similarity\n")
+cat(sprintf("   M = %.3f, SD = %.3f\n", mean(df_sim$lev_sim), sd(df_sim$lev_sim)))
+cat(sprintf("   Median = %.3f, Range = [%.3f, %.3f]\n",
+            median(df_sim$lev_sim), min(df_sim$lev_sim), max(df_sim$lev_sim)))
+```
+
+```{r metric3-participants-sentences}
+# ---- D) Per-participant averages ----
+pid_sim <- df_sim %>%
+  group_by(participant_id) %>%
+  summarise(
+    jaccard_m = mean(jaccard), cosine_m = mean(cosine), lev_m = mean(lev_sim),
+    .groups = "drop"
+  )
+
+cat(sprintf("\nD) Per-participant averages (N = %d)\n", nrow(pid_sim)))
+cat(sprintf("   Jaccard: M = %.3f, SD = %.3f\n", mean(pid_sim$jaccard_m), sd(pid_sim$jaccard_m)))
+cat(sprintf("   Cosine:  M = %.3f, SD = %.3f\n", mean(pid_sim$cosine_m),  sd(pid_sim$cosine_m)))
+cat(sprintf("   Lev:     M = %.3f, SD = %.3f\n", mean(pid_sim$lev_m),     sd(pid_sim$lev_m)))
+
+# ---- E) Per-sentence difficulty ----
+# Use Filename as sentence identifier (strip .wav extension for labels)
+df_sim <- df_sim %>%
+  mutate(sentence_label = str_replace(Filename, "\\.wav$", ""))
+
+sentence_sim <- df_sim %>%
+  group_by(sentence_label) %>%
+  summarise(cosine_m = mean(cosine), jaccard_m = mean(jaccard), n = n(),
+            .groups = "drop") %>%
+  arrange(cosine_m)
+
+cat("\nE) Per-sentence semantic similarity (by TF-IDF cosine)\n")
+sentence_sim %>% knitr::kable(digits = 3)
+```
+
+```{r metric3-kw-correlation}
+# ---- F) Keyword accuracy x Semantic similarity ----
+cor_kw_cos    <- cor.test(df_sim$PropKeywordsCorrect, df_sim$cosine)
+cor_kw_cos_sp <- cor.test(df_sim$PropKeywordsCorrect, df_sim$cosine, method = "spearman")
+
+cat(sprintf("\nF) Keyword accuracy x Semantic similarity\n"))
+cat(sprintf("   Pearson  r = %.3f, p = %.6f (N = %d trials)\n",
+            cor_kw_cos$estimate, cor_kw_cos$p.value, nrow(df_sim)))
+cat(sprintf("   Spearman rho = %.3f, p = %.6f\n",
+            cor_kw_cos_sp$estimate, cor_kw_cos_sp$p.value))
+```
+
+```{r metric3-plot, fig.width=18, fig.height=5}
+p_hist <- ggplot(df_sim, aes(x = cosine)) +
+  geom_histogram(bins = 25, fill = COL_PHON, alpha = 0.7, color = "white") +
+  geom_vline(xintercept = mean(df_sim$cosine), linetype = "dashed", linewidth = 1) +
+  annotate("text", x = mean(df_sim$cosine) + 0.02, y = Inf, vjust = 2,
+           label = sprintf("M = %.3f", mean(df_sim$cosine)), size = 4) +
+  labs(title = "Distribution of Semantic Similarity",
+       x = "TF-IDF Cosine Similarity", y = "Number of Trials")
+
+p_scatter <- ggplot(df_sim, aes(x = PropKeywordsCorrect, y = cosine)) +
+  geom_point(alpha = 0.3, color = COL_NONPHON, size = 2) +
+  geom_smooth(method = "lm", se = TRUE, color = "grey40", fill = "grey80") +
+  labs(title = sprintf("Keyword Accuracy x Semantic Similarity (r = %.3f)",
+                        cor_kw_cos$estimate),
+       x = "Keyword Accuracy (PropCorrect)",
+       y = "TF-IDF Cosine Similarity")
+
+p_sentence <- NULL
+if (nrow(sentence_sim) > 0) {
+  p_sentence <- ggplot(sentence_sim,
+                        aes(x = cosine_m, y = reorder(sentence_label, cosine_m))) +
+    geom_col(fill = COL_CORRECT, alpha = 0.7, color = "white") +
+    labs(title = "Semantic Similarity by Sentence",
+         x = "Mean Cosine Similarity", y = NULL) +
+    scale_x_continuous(limits = c(0, 1))
+}
+
+if (!is.null(p_sentence)) {
+  p_hist + p_scatter + p_sentence + plot_layout(ncol = 3)
+} else {
+  p_hist + p_scatter + plot_layout(ncol = 2)
+}
+```
+
+
+# Session Info
+
+```{r session-info}
+sessionInfo()
+```
