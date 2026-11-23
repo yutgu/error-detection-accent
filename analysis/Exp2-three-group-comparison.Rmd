@@ -1,0 +1,1302 @@
+---
+title: "Three-Group Comparison: Does Error Monitoring Block Accent Adaptation?"
+subtitle: "Experiment 2: Passive-listening vs. Error-monitoring vs. No-exposure"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+    theme: paper
+    css: !expr "NULL"
+date: "`r Sys.Date()`"
+---
+
+<link href="https://fonts.googleapis.com/css2?family=Lato:ital,wght@0,300;0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+body { font-family: 'Lato', 'Helvetica Neue', Arial, sans-serif; font-size: 15px; line-height: 1.6; }
+h1, h2, h3 { font-family: 'Lato', 'Helvetica Neue', Arial, sans-serif; font-weight: 700; }
+code, pre { font-size: 13px; }
+table { width: auto !important; font-size: 14px; }
+th, td { padding: 4px 8px; }
+</style>
+
+```{r setup, include=TRUE}
+knitr::opts_chunk$set(
+  echo = TRUE, fig.align = "center", fig.width = 8, fig.height = 5,
+  dev = "png", message = FALSE, warning = FALSE, error = TRUE,
+  cache = FALSE, include = TRUE
+)
+```
+
+```{r libraries}
+library(tidyverse)
+library(lme4)
+library(lmerTest)
+library(scales)
+library(Hmisc)
+library(maps)
+```
+
+```{r constants}
+COL_NOEXP  <- "#999999"
+COL_ERRMON <- "#D97B3A"
+COL_PASSIV <- "#3A7FBF"
+
+GROUP_COLORS <- c("No-exposure" = COL_NOEXP,
+                  "Error-monitoring" = COL_ERRMON,
+                  "Passive-listening" = COL_PASSIV)
+GROUP_ORDER  <- c("No-exposure", "Error-monitoring", "Passive-listening")
+GROUP_PREFIX <- c("No-exposure" = "ne",
+                  "Error-monitoring" = "em",
+                  "Passive-listening" = "pl")
+
+# Manual Cohen's d
+# d = 0.2 is small, 0.5 is medium, 0.8 is large.
+compute_cohens_d <- function(x, y) {
+  nx <- length(x); ny <- length(y)
+  if (nx < 2 || ny < 2) return(NA_real_)
+  pooled_sd <- sqrt(((nx - 1) * var(x) + (ny - 1) * var(y)) / (nx + ny - 2))
+  if (pooled_sd == 0) return(NA_real_)
+  (mean(x) - mean(y)) / pooled_sd
+}
+
+# Reusable pie chart
+make_pie <- function(df, col, title = "", palette = "Set2") {
+  d <- df %>%
+    count(!!sym(col)) %>%
+    mutate(pct = round(100 * n / sum(n)),
+           label = paste0(!!sym(col), "\n(", n, ", ", pct, "%)"))
+  ggplot(d, aes(x = "", y = n, fill = !!sym(col))) +
+    geom_col(width = 1, alpha = 0.9) +
+    coord_polar("y") +
+    geom_text(aes(label = label), position = position_stack(vjust = 0.5), size = 3.2) +
+    scale_fill_brewer(palette = palette) +
+    theme_void() +
+    theme(legend.position = "none") +
+    labs(title = title)
+}
+
+# Standardize state names for the US map.
+# Handles full names (any case), abbreviations, and known zip codes.
+clean_state <- function(x) {
+  x <- trimws(x)
+  x_lower <- tolower(x)
+  idx <- match(x_lower, tolower(state.name))
+  if (!is.na(idx)) return(tolower(state.name[idx]))
+  idx <- match(toupper(x), state.abb)
+  if (!is.na(idx)) return(tolower(state.name[idx]))
+  # Zip code fallback: first digit → region (approximate)
+  if (grepl("^\\d{5}$", x)) {
+    zip_state <- c("0"="massachusetts","1"="new york","2"="virginia",
+                   "3"="georgia","4"="kentucky","5"="minnesota",
+                   "6"="kansas","7"="texas","8"="colorado","9"="california")
+    first <- substr(x, 1, 1)
+    if (first %in% names(zip_state)) return(zip_state[[first]])
+  }
+  NA_character_
+}
+
+theme_set(theme_minimal(base_size = 12) + theme(
+  plot.title    = element_text(face = "bold", size = 13),
+  plot.subtitle = element_text(size = 10, color = "grey40"),
+  axis.title    = element_text(size = 11),
+  axis.line     = element_line(color = "black", linewidth = 0.3),
+  panel.grid.minor = element_blank(),
+  legend.position = "top"
+))
+```
+
+
+# 0. Data Loading and Participant Exclusion
+
+## 0.1 Load raw data
+
+```{r load-raw}
+raw_folder <- "../data/follow-up-no-error"
+raw_files  <- list.files(raw_folder, pattern = "\\.csv$", full.names = TRUE)
+stopifnot("No CSVs found in follow-up-no-error folder." = length(raw_files) > 0)
+
+# na = "" means only truly empty cells become NA. The default also converts
+# the literal string "NA" to missing, but participants sometimes type "NA"
+# as a real response (meaning "I couldn't understand this sentence").
+df_raw <- map_dfr(raw_files, ~read_csv(.x, show_col_types = FALSE, na = ""))
+all_pids <- unique(df_raw$participant_id)
+cat(sprintf("Loaded %d file(s): %s\nTotal rows: %d, Total participants: %d\n",
+            length(raw_files), paste(basename(raw_files), collapse = ", "),
+            nrow(df_raw), length(all_pids)))
+```
+
+## 0.2 Exclusion pipeline
+
+We exclude participants for three reasons, applied in order:
+
+1. **Screened out by FindingFive**: failed the headphone check (3 attempts) or the comprehension quiz. These participants hit the Exit block.
+2. **Non-English native language**: anyone who did not select English as their only native language. This study requires monolingual English speakers because bilingual listeners (especially Spanish--English) may have different adaptation patterns.
+3. **Failed attention check**: must answer at least 3 of 4 no-error attention check filler trials correctly (fill_25--fill_28).
+
+```{r exclusion}
+# Step 1: Screened-out participants
+# They hit Exit (headphone fail) or Exit_SanityCheck (comprehension fail).
+screened_out <- df_raw %>%
+  filter(block_name %in% c("Exit_SanityCheck", "Exit",
+                            "Ineligible_Prolific_confirmation_code")) %>%
+  distinct(participant_id) %>%
+  pull(participant_id)
+
+# Also check the branching columns for safety
+screened_branch <- df_raw %>%
+  filter(branch_eligiblenotEligible == "notEligible" |
+         branch_sanitycheckFailsanitycheckPass == "sanitycheckFail") %>%
+  distinct(participant_id) %>%
+  pull(participant_id)
+
+screened_out <- unique(c(screened_out, screened_branch))
+
+cat(sprintf("Step 1 — Screened out by FindingFive: %d\n", length(screened_out)))
+
+# Step 2: Native language check (among non-screened participants)
+remaining <- setdiff(all_pids, screened_out)
+
+lang_check <- df_raw %>%
+  filter(participant_id %in% remaining,
+         response_name == "native_language") %>%
+  select(participant_id, native_language = response_value) %>%
+  mutate(english_only = grepl("^\\['English'\\]$", native_language))
+
+non_english_ids <- lang_check %>% filter(!english_only) %>% pull(participant_id)
+
+if (length(non_english_ids) > 0) {
+  cat(sprintf("Step 2 — Non-English native language: %d\n", length(non_english_ids)))
+  lang_check %>% filter(!english_only) %>% knitr::kable()
+} else {
+  cat("Step 2 — Non-English native language: 0\n")
+}
+
+remaining <- setdiff(remaining, non_english_ids)
+
+# Step 3: Attention checks (3/4 no-error filler trials)
+att_key <- tibble(
+  stim = c("fill_25_new", "fill_26_new", "fill_27_new", "fill_28_new"),
+  question = c("How many legs does a dog have?",
+               "What state is Los Angeles in?",
+               "What day comes after Monday?",
+               "What color is a school bus?"),
+  pattern = c("\\b(four|4)\\b", "california", "tuesday", "yellow")
+)
+
+att_data <- df_raw %>%
+  filter(grepl("^Trivia_List", block_name),
+         response_name == "Trivia_Text_Response",
+         stimuli_presented %in% att_key$stim,
+         participant_id %in% remaining) %>%
+  select(participant_id, stimuli_presented, response_value) %>%
+  left_join(att_key, by = c("stimuli_presented" = "stim")) %>%
+  mutate(answer = tolower(trimws(response_value)),
+         correct = mapply(function(a, p) grepl(p, a, ignore.case = TRUE),
+                          answer, pattern))
+
+att_scores <- att_data %>%
+  group_by(participant_id) %>%
+  summarise(correct = sum(correct), total = n(), .groups = "drop") %>%
+  mutate(pass = correct >= 3)
+
+att_fail_ids <- att_scores %>% filter(!pass) %>% pull(participant_id)
+
+cat(sprintf("Step 3 — Failed attention check (<3/4): %d\n", length(att_fail_ids)))
+if (length(att_fail_ids) > 0) {
+  att_scores %>% filter(!pass) %>% knitr::kable()
+}
+
+remaining <- setdiff(remaining, att_fail_ids)
+
+# Final included sample
+included_ids <- remaining
+df_incl <- df_raw %>% filter(participant_id %in% included_ids)
+
+cat(sprintf("\nExclusion summary\n"))
+cat(sprintf("Total recruited:            %d\n", length(all_pids)))
+cat(sprintf("Screened out (FindingFive): -%d\n", length(screened_out)))
+cat(sprintf("Non-English native lang:   -%d\n", length(non_english_ids)))
+cat(sprintf("Failed attention check:    -%d\n", length(att_fail_ids)))
+cat(sprintf("Included in analysis:       %d\n", length(included_ids)))
+```
+
+## 0.3 Assign participant IDs
+
+We assign short IDs (pl-1, pl-2, ...) only to included participants.
+
+```{r assign-pids}
+pid_map_pl <- df_incl %>%
+  distinct(participant_id) %>%
+  arrange(participant_id) %>%
+  mutate(pid = paste0("pl-", row_number()))
+
+df_incl <- df_incl %>%
+  left_join(pid_map_pl, by = "participant_id")
+
+cat(sprintf("Assigned IDs pl-1 through pl-%d\n", nrow(pid_map_pl)))
+```
+
+
+# 1. Sample Description
+
+All summaries in this section are for the included passive-listening participants only. Demographics for the No-exposure and Error-monitoring groups are reported in main-analysis-improved.Rmd.
+
+## 1.1 Completion time
+
+```{r completion-time, fig.width=7, fig.height=4}
+dur <- df_incl %>%
+  distinct(participant_id, pid, participation_duration) %>%
+  mutate(minutes = as.numeric(participation_duration) / 60)
+
+dur_mean <- mean(dur$minutes)
+dur_sd   <- sd(dur$minutes)
+
+ggplot(dur, aes(x = minutes)) +
+  geom_density(fill = COL_PASSIV, alpha = 0.35, color = COL_PASSIV) +
+  geom_rug(alpha = 0.5, color = COL_PASSIV) +
+  geom_vline(xintercept = dur_mean, linetype = "dashed", color = "grey30") +
+  annotate("text", x = dur_mean + 1, y = Inf, vjust = 2, hjust = 0, size = 3.5,
+           label = sprintf("M = %.1f min\nSD = %.1f min", dur_mean, dur_sd)) +
+  labs(title = "Study Completion Time (Included Participants)",
+       x = "Minutes", y = "Density")
+
+cat(sprintf("Completion time: M = %.1f, SD = %.1f, range = %.0f-%.0f min\n",
+            dur_mean, dur_sd, min(dur$minutes), max(dur$minutes)))
+```
+
+## 1.2 Demographics
+
+```{r demographics, fig.width=10, fig.height=4}
+quest <- df_incl %>% filter(block_name == "Questionnaire")
+
+pull_quest <- function(name) {
+  quest %>%
+    filter(response_name == name) %>%
+    select(pid, value = response_value) %>%
+    arrange(pid)
+}
+
+# Age
+age_data <- pull_quest("age") %>% mutate(age = as.numeric(value))
+cat(sprintf("Age: M = %.1f, SD = %.1f, range = %d-%d\n",
+            mean(age_data$age), sd(age_data$age),
+            min(age_data$age), max(age_data$age)))
+
+# Gender + Race side by side
+gender <- pull_quest("gender") %>% rename(gender = value)
+race   <- pull_quest("race/ethnicity") %>%
+  rename(race = value) %>%
+  mutate(race = gsub("\\['|'\\]", "", race))
+
+p1 <- make_pie(gender, "gender", "Gender", "Pastel1")
+p2 <- make_pie(race, "race", "Race / Ethnicity", "Set2")
+gridExtra::grid.arrange(p1, p2, ncol = 2)
+
+# Education
+cat("\nEducation:\n")
+pull_quest("highest_level_edu") %>%
+  rename(education = value) %>%
+  count(education) %>%
+  arrange(desc(n)) %>%
+  knitr::kable()
+```
+
+## 1.3 Geographic distribution
+
+```{r us-map, fig.width=8, fig.height=5}
+state_data <- pull_quest("current_state") %>%
+  mutate(state = sapply(value, clean_state)) %>%
+  filter(!is.na(state))
+
+state_counts <- state_data %>% count(state, name = "participants")
+
+us_map <- map_data("state") %>%
+  left_join(state_counts, by = c("region" = "state"))
+
+# Get state centers for labels
+state_centers <- us_map %>%
+  group_by(region) %>%
+  summarise(long = mean(range(long)), lat = mean(range(lat)), .groups = "drop") %>%
+  left_join(state_counts, by = c("region" = "state")) %>%
+  filter(!is.na(participants))
+
+ggplot(us_map, aes(x = long, y = lat, group = group)) +
+  geom_polygon(aes(fill = participants), color = "white", linewidth = 0.2) +
+  geom_text(data = state_centers, aes(label = participants, group = NULL),
+            size = 3, fontface = "bold", color = "white") +
+  scale_fill_gradient(low = "#B0D4F1", high = "#1A5276", na.value = "#EEEEEE") +
+  coord_map("polyconic") +
+  theme_void() +
+  labs(title = "Where Are Our Participants?", fill = "N")
+
+n_unmatched <- sum(is.na(sapply(pull_quest("current_state")$value, clean_state)))
+if (n_unmatched > 0)
+  cat(sprintf("Note: %d state value(s) could not be matched to a US state.\n", n_unmatched))
+```
+
+## 1.4 Language background
+
+```{r language-background}
+# Household accent
+cat("Household accent (accented English at home?):\n")
+pull_quest("household_accent") %>%
+  rename(household_accent = value) %>%
+  count(household_accent) %>%
+  arrange(desc(n)) %>%
+  knitr::kable()
+```
+
+## 1.5 Self-reported exposure to Spanish-accented English
+
+Participants rated two items on a 1--5 scale: 1 = Never, 2 = Sometimes, 3 = Half the time, 4 = Often, 5 = All the time.
+
+```{r exposure, fig.width=7, fig.height=4}
+exp_labels <- c("1\nNever", "2\nSometimes", "3\nHalf the\ntime", "4\nOften", "5\nAll the\ntime")
+
+exposure <- quest %>%
+  filter(response_name %in% c("exposure_spanish", "exposure_spanish_accent")) %>%
+  mutate(rating = factor(as.integer(response_value), levels = 1:5),
+         item = ifelse(response_name == "exposure_spanish",
+                       "Spanish language", "Spanish-accented English")) %>%
+  select(pid, item, rating)
+
+exposure %>%
+  mutate(rating_num = as.integer(as.character(rating))) %>%
+  group_by(item) %>%
+  summarise(M = round(mean(rating_num), 2),
+            SD = round(sd(rating_num), 2),
+            .groups = "drop") %>%
+  knitr::kable(caption = "Exposure ratings (1 = Never, 5 = All the time)")
+
+ggplot(exposure, aes(x = rating, fill = item)) +
+  geom_bar(position = "dodge", width = 0.6, alpha = 0.85) +
+  scale_x_discrete(drop = FALSE, labels = exp_labels) +
+  scale_fill_manual(values = c("Spanish language" = "#66A182",
+                                "Spanish-accented English" = "#2F6B55")) +
+  labs(title = "Self-Rated Exposure to Spanish / Spanish-Accented English",
+       x = NULL, y = "Count", fill = NULL) +
+  theme(legend.position = "top")
+```
+
+## 1.6 Accent perception
+
+Accent strength scale: 1 = No accent / Native-sounding, 2 = Mild accent, 3 = Moderate accent, 4 = Strong accent, 5 = Very strong accent.
+
+```{r accent-perception, fig.width=10, fig.height=4}
+str_labels <- c("1\nNo accent", "2\nMild", "3\nModerate", "4\nStrong", "5\nVery strong")
+
+accent_str <- quest %>%
+  filter(response_name %in% c("trivia_accent_strength",
+                               "transcription_accent_strength")) %>%
+  mutate(speaker = ifelse(response_name == "trivia_accent_strength",
+                          "Trivia speaker", "Transcription speaker"),
+         strength = factor(as.integer(response_value), levels = 1:5)) %>%
+  select(pid, speaker, strength)
+
+accent_str %>%
+  mutate(strength_num = as.integer(as.character(strength))) %>%
+  group_by(speaker) %>%
+  summarise(M = round(mean(strength_num), 2),
+            SD = round(sd(strength_num), 2),
+            .groups = "drop") %>%
+  knitr::kable(caption = "Accent strength (1 = No accent, 5 = Very strong)")
+
+p_str <- ggplot(accent_str, aes(x = strength, fill = speaker)) +
+  geom_bar(position = "dodge", width = 0.6, alpha = 0.85) +
+  scale_x_discrete(drop = FALSE, labels = str_labels) +
+  scale_fill_manual(values = c("Trivia speaker" = "#8B6BB0",
+                                "Transcription speaker" = "#4A3673")) +
+  labs(title = "How Strong Was Each Speaker's Accent?",
+       x = NULL, y = "Count", fill = NULL) +
+  theme(legend.position = "top")
+
+# Speaker region check
+region <- quest %>%
+  filter(response_name == "speaker_region_check") %>%
+  select(pid, answer = response_value)
+
+p_region <- make_pie(region, "answer", "Same Region?", "Set3")
+
+gridExtra::grid.arrange(p_str, p_region, ncol = 2, widths = c(1.5, 1))
+```
+
+
+# 2. Data Quality Checks
+
+All checks below are for the included participants only.
+
+## 2.1 Block completeness
+
+```{r block-completeness}
+# Every included participant should have all core blocks.
+expected_blocks <- c("Welcome", "Headphone_check", "Begin", "Prac_Trivia",
+                     "Pre_Main_Trivia_Quiz", "Transcription", "Questionnaire")
+
+block_check <- df_incl %>%
+  group_by(pid) %>%
+  summarise(blocks = list(unique(block_name)), .groups = "drop") %>%
+  mutate(has_all = sapply(blocks, function(b) all(expected_blocks %in% b)))
+
+if (all(block_check$has_all)) {
+  cat(sprintf("PASS: All %d included participants completed every core block.\n",
+              nrow(block_check)))
+} else {
+  missing <- block_check %>% filter(!has_all)
+  cat(sprintf("FAIL: %d participant(s) are missing blocks:\n", nrow(missing)))
+  missing %>% select(pid) %>% knitr::kable()
+}
+```
+
+## 2.2 Trial counts
+
+```{r trial-counts}
+trivia <- df_incl %>%
+  filter(grepl("^Trivia_List", block_name),
+         response_name == "Trivia_Choice_Response") %>%
+  mutate(item_type = case_when(
+    grepl("^targ_", stimuli_presented) ~ "target",
+    grepl("^fill_", stimuli_presented) ~ "filler",
+    TRUE ~ "unknown"))
+
+# Check total trial count per participant (should be 56)
+trial_totals <- trivia %>% count(pid, name = "total_trials")
+all_56 <- all(trial_totals$total_trials == 56)
+cat(sprintf("Total trivia trials: %s (all %d have 56)\n",
+            if (all_56) "PASS" else "FAIL", nrow(trial_totals)))
+
+# Check target/filler split (should be 24 / 32)
+type_counts <- trivia %>% count(pid, item_type) %>% pivot_wider(names_from = item_type, values_from = n)
+all_split <- all(type_counts$target == 24 & type_counts$filler == 32)
+cat(sprintf("Target/filler split (24/32): %s\n", if (all_split) "PASS" else "FAIL"))
+
+# Check conditions within targets (should be 6 per condition A-D)
+cond_counts <- trivia %>%
+  filter(item_type == "target") %>%
+  mutate(condition = str_extract(stimuli_presented, "(?<=targ_\\d{2}_)[A-D]")) %>%
+  count(pid, condition) %>%
+  pivot_wider(names_from = condition, values_from = n)
+all_6 <- all(cond_counts %>% select(A:D) %>% sapply(function(x) all(x == 6)))
+cat(sprintf("6 targets per condition: %s\n", if (all_6) "PASS" else "FAIL"))
+
+# Transcription count (should be 20)
+trans_raw <- df_incl %>%
+  filter(block_name == "Transcription", response_name == "Transcription_Response")
+trans_counts <- trans_raw %>% count(pid, name = "sentences")
+all_20 <- all(trans_counts$sentences == 20)
+cat(sprintf("Transcription sentences (20): %s\n", if (all_20) "PASS" else "FAIL"))
+
+# Any empty or junk transcriptions?
+# With na="" in read_csv, truly empty cells are NA; "NA" typed stays as a string.
+n_truly_empty <- sum(is.na(trans_raw$response_value) | trans_raw$response_value == "")
+n_typed_na    <- sum(tolower(trimws(trans_raw$response_value)) %in% c("na", "n/a") &
+                     !is.na(trans_raw$response_value))
+cat(sprintf("Truly empty responses: %d\n", n_truly_empty))
+cat(sprintf("Typed 'NA' (couldn't understand): %d\n", n_typed_na))
+```
+
+## 2.3 Counterbalancing
+
+The 24 target items come in 4 condition versions (A/B/C/D). Each Latin Square group hears a different rotation of conditions, so each participant hears 6 targets in condition A, 6 in B, 6 in C, and 6 in D. The groups map to trivia stimulus lists: Group_1 → Trivia_List1, Group_2 → Trivia_List2, Group_3 → Trivia_List3, Group_4 → Trivia_List4.
+
+```{r counterbalancing}
+participants <- df_incl %>% distinct(participant_id, pid, group_id)
+group_counts <- participants %>% count(group_id, name = "n")
+
+cat("Group distribution:\n")
+group_counts %>% knitr::kable()
+
+if (nrow(participants) >= 8) {
+  chi <- chisq.test(group_counts$n)
+  cat(sprintf("\nChi-square test for equal distribution: X2 = %.2f, p = %.3f\n",
+              chi$statistic, chi$p.value))
+  cat(if (chi$p.value > .05) "PASS: no evidence of imbalance\n"
+      else "WARNING: groups may be unbalanced\n")
+}
+```
+
+## 2.4 Trivia response times
+
+The RT is recorded from the moment the audio finishes playing. Trials with RT < 200ms are implausibly fast (the participant could not have processed the question that quickly) and are excluded from this plot.
+
+```{r trivia-rt, fig.width=7, fig.height=4}
+trivia_rt <- df_incl %>%
+  filter(grepl("^Trivia_List", block_name),
+         response_name == "Trivia_Choice_Response") %>%
+  mutate(rt_ms = as.numeric(response_rt))
+
+n_under_200 <- sum(trivia_rt$rt_ms < 200, na.rm = TRUE)
+pct_under_200 <- round(100 * n_under_200 / nrow(trivia_rt), 1)
+cat(sprintf("Trials with RT < 200ms: %d / %d (%.1f%%)\n", n_under_200, nrow(trivia_rt), pct_under_200))
+
+trivia_rt_clean <- trivia_rt %>% filter(rt_ms >= 200)
+
+ggplot(trivia_rt_clean, aes(x = rt_ms / 1000)) +
+  geom_density(fill = COL_PASSIV, alpha = 0.35, color = COL_PASSIV) +
+  geom_vline(xintercept = 0.5, linetype = "dashed", color = "grey50") +
+  annotate("text", x = 0.5, y = Inf, vjust = 2, hjust = -0.1,
+           label = "500ms", size = 3, color = "grey50") +
+  labs(title = "Trivia Choice Response Time (excluding RT < 200ms)",
+       x = "Response time (seconds)", y = "Density") +
+  scale_x_continuous(limits = c(0, NA))
+
+# The RT distribution has a long right tail (some participants take 30+ seconds
+# on a trial, likely due to distraction or tabbing away). The median is a much
+# better summary than the mean for skewed distributions.
+q <- quantile(trivia_rt_clean$rt_ms, c(0.25, 0.5, 0.75), na.rm = TRUE)
+cat(sprintf("RT after excluding <200ms: Median = %.0f ms, IQR = [%.0f, %.0f] ms\n",
+            q[2], q[1], q[3]))
+cat(sprintf("Trials > 10s: %d (%.1f%%) — likely distraction, not response time\n",
+            sum(trivia_rt_clean$rt_ms > 10000, na.rm = TRUE),
+            100 * mean(trivia_rt_clean$rt_ms > 10000, na.rm = TRUE)))
+```
+
+
+# 3. Keyword Scoring and Data Loading
+
+## 3.1 How keyword scoring works
+
+Each transcription sentence has a list of keywords (content words that carry meaning). Scoring compares what the participant typed against these keywords using partial matching (R's `pmatch`).
+
+`pmatch` checks whether a keyword is a **prefix** of any word in the transcription. So "notice" matches "noticed" (prefix), but "weight" does not match "wait" (different letters). A keyword only counts once.
+
+| Example | |
+|:---|:---|
+| Keywords | noticed, weight, lead |
+| Typed | "He noticed the wait of the led" |
+| noticed → "noticed" | match (1 point) |
+| weight → "wait" | no match (0) |
+| lead → "led" | no match (0) |
+| Score | 1 / 3 = 33.3% |
+
+```{r scoring-key}
+key.df <- read.delim("../data/transcription_scoring.txt", header = TRUE, sep = ",") %>%
+  mutate(Sentence = as.character(Sentence))
+
+cat(sprintf("Scoring key: %d sentences, %d total keywords\n",
+            nrow(key.df), sum(as.numeric(key.df$NumKeywords))))
+```
+
+```{r scoring-function}
+# Identical to main-analysis-improved.Rmd. Must stay the same.
+num.keywords.correct <- function(transcription, keywords) {
+  keys  <- gsub("[[:punct:]]", "", tolower(as.character(keywords)))
+  trans <- gsub("[[:punct:]]", "", tolower(as.character(transcription)))
+  key_words   <- unlist(strsplit(keys, " "))
+  trans_words <- unlist(strsplit(trans, " "))
+  sum(!is.na(pmatch(key_words, trans_words)))
+}
+```
+
+## 3.2 Load all three groups
+
+```{r load-groups}
+load_transcription_group <- function(folder_path, group_label) {
+  files <- list.files(folder_path, pattern = "_transcription_data\\.csv$",
+                      full.names = TRUE, recursive = TRUE)
+  if (length(files) == 0) {
+    files <- list.files(folder_path, pattern = "transcription_data\\.csv$",
+                        full.names = TRUE, recursive = TRUE)
+    files <- files[1]
+  }
+  if (length(files) == 0 || is.na(files[1])) {
+    warning(paste("No data found for", group_label))
+    return(NULL)
+  }
+  # Load and combine ALL matching files (e.g., main batch + test run)
+  map_dfr(files, ~read_csv(.x, show_col_types = FALSE) %>%
+            mutate(across(everything(), as.character))) %>%
+    filter(!is.na(stimulus_files_presented),
+           stimulus_files_presented != "",
+           block == "Transcription") %>%
+    mutate(Filename = basename(stimulus_files_presented),
+           Transcription = response_value,
+           group = group_label)
+}
+
+df_noexp  <- load_transcription_group("../data/baseline_and_error_detection/preprocessed/transcrip_baseline", "No-exposure")
+df_errmon <- load_transcription_group("../data/baseline_and_error_detection/preprocessed/main_batch3", "Error-monitoring")
+
+# Passive-listening: from the included participants' raw data
+df_passiv <- df_incl %>%
+  mutate(across(everything(), as.character)) %>%
+  filter(block_name == "Transcription",
+         response_name == "Transcription_Response",
+         !is.na(stimulus_files_presented),
+         stimulus_files_presented != "") %>%
+  mutate(Filename = basename(stimulus_files_presented),
+         Transcription = response_value,
+         group = "Passive-listening")
+
+df_all_raw <- bind_rows(df_noexp, df_errmon, df_passiv)
+cat(sprintf("Combined: %d total transcription rows\n", nrow(df_all_raw)))
+```
+
+## 3.3 Score and filter
+
+```{r score-and-filter}
+df_all <- df_all_raw %>%
+  inner_join(key.df %>% select(-SentenceSet), by = c("Filename" = "Sentence"))
+
+clean_transcription <- function(x) {
+  x <- tolower(as.character(x))
+  for (pat in c("&lt&","&gt&","&quot&","&comma&","&semicol&","&pipe&","&apos&")) {
+    rep <- c("<",">","\"",",",";","|","'")[match(pat,
+           c("&lt&","&gt&","&quot&","&comma&","&semicol&","&pipe&","&apos&"))]
+    x <- gsub(pat, rep, x, fixed = TRUE)
+  }
+  x
+}
+
+df_all <- df_all %>%
+  mutate(
+    Transcription = clean_transcription(Transcription),
+    NumKeywordsCorrect = mapply(num.keywords.correct, Transcription, Keywords),
+    PropKeywordsCorrect = as.numeric(NumKeywordsCorrect) / as.numeric(NumKeywords)
+  )
+
+# Error-monitoring attention check filter (6/8 error detection threshold).
+eligible_ids_file <- "../data/baseline_and_error_detection/preprocessed/main_batch3/eligible_participant_ids.csv"
+if (file.exists(eligible_ids_file)) {
+  eligible_ids <- read_csv(eligible_ids_file, show_col_types = FALSE)$participant_id
+  n_before <- n_distinct(df_all$participant_id[df_all$group == "Error-monitoring"])
+  df_all <- df_all %>%
+    filter(group != "Error-monitoring" | participant_id %in% eligible_ids)
+  n_after <- n_distinct(df_all$participant_id[df_all$group == "Error-monitoring"])
+  cat(sprintf("Error-monitoring: %d -> %d after 6/8 error detection filter\n", n_before, n_after))
+}
+
+# --- Merge trial durations for fatigue analysis (Section 5.5) ---
+# No trials are excluded; durations are used for the fatigue check only.
+get_trial_durations <- function(raw_df, group_label) {
+  raw_df %>%
+    filter(block_name == "Transcription",
+           !is.na(stimulus_files_presented),
+           stimulus_files_presented != "") %>%
+    mutate(Filename = basename(as.character(stimulus_files_presented)),
+           trial_duration_sec = as.numeric(trial_duration) / 1000) %>%
+    filter(!is.na(trial_duration_sec), trial_duration_sec > 0) %>%
+    select(participant_id, Filename, trial_duration_sec) %>%
+    distinct()
+}
+
+em_raw <- bind_rows(
+  read_csv("../data/baseline_and_error_detection/raw/main_120325_48subj.csv",
+           show_col_types = FALSE),
+  read_csv("../data/baseline_and_error_detection/raw/main_112825_test_run_4subj.csv",
+           show_col_types = FALSE)
+)
+ne_raw1 <- read_csv("../data/baseline_and_error_detection/raw/transcription_baseline_batch1_14subj.csv",
+                     show_col_types = FALSE)
+ne_raw2 <- read_csv("../data/baseline_and_error_detection/raw/transcription_baseline_batch2_10subj.csv",
+                     show_col_types = FALSE)
+
+dur_em <- get_trial_durations(em_raw, "Error-monitoring")
+dur_ne <- bind_rows(get_trial_durations(ne_raw1, "No-exposure"),
+                     get_trial_durations(ne_raw2, "No-exposure"))
+dur_pl <- get_trial_durations(df_raw, "Passive-listening")
+dur_all <- bind_rows(dur_em, dur_ne, dur_pl)
+
+df_all <- df_all %>%
+  left_join(dur_all, by = c("participant_id", "Filename"))
+
+df_all <- df_all %>%
+  mutate(group = factor(group, levels = GROUP_ORDER))
+
+# Assign easy-to-read IDs.
+# Passive-listening: use the IDs from Section 0.3 so they match.
+# No-exposure and Error-monitoring: assign new sequential IDs.
+df_all <- df_all %>%
+  left_join(pid_map_pl %>% select(participant_id, pid_from_sec0 = pid),
+            by = "participant_id") %>%
+  group_by(group) %>%
+  mutate(pid_num = dense_rank(participant_id)) %>%
+  ungroup() %>%
+  mutate(pid = case_when(
+    group == "Passive-listening" & !is.na(pid_from_sec0) ~ pid_from_sec0,
+    TRUE ~ paste0(GROUP_PREFIX[as.character(group)], "-", pid_num)
+  )) %>%
+  select(-pid_from_sec0)
+
+df_all <- df_all %>%
+  group_by(participant_id) %>%
+  mutate(trial_order = row_number()) %>%
+  ungroup()
+
+df_all %>%
+  group_by(group) %>%
+  summarise(N = n_distinct(participant_id),
+            Trials = n(),
+            Mean = mean(PropKeywordsCorrect, na.rm = TRUE),
+            SD = sd(PropKeywordsCorrect, na.rm = TRUE),
+            .groups = "drop") %>%
+  knitr::kable(digits = 3, caption = "Transcription accuracy by group")
+```
+
+
+# 4. Research Questions
+
+Our core question: does concurrent error monitoring block accent adaptation?
+
+| Group | During trivia | During transcription | Tests |
+|:------|:-------------|:--------------------|:------|
+| No-exposure | No trivia | Transcribe in noise | No prior exposure |
+| Error-monitoring | Listen + answer + detect errors | Transcribe in noise | Adaptation with divided attention |
+| Passive-listening | Listen + answer only | Transcribe in noise | Adaptation with full attention |
+
+Hypotheses:
+
+- H1 (Monitoring blocks): Passive-listening > Error-monitoring > No-exposure
+- H2 (Independent): Passive-listening = Error-monitoring > No-exposure
+- H3 (No adaptation): All groups equal
+
+
+# 5. Visualizations and Analysis
+
+## 5.1 Figure 1: Group comparison
+
+Error bars are 95% bootstrapped CIs (2000 resamples). A bootstrap CI resamples the data with replacement, computes the mean each time, and takes the middle 95% of those means. If two groups' CIs do not overlap, their means likely differ.
+
+```{r fig1-groups, fig.width=7, fig.height=5}
+pts <- df_all %>%
+  group_by(group, pid) %>%
+  summarise(M = mean(PropKeywordsCorrect, na.rm = TRUE), .groups = "drop")
+
+summ <- df_all %>%
+  group_by(group) %>%
+  summarise(stats = list(smean.cl.boot(PropKeywordsCorrect, B = 2000)),
+            .groups = "drop") %>%
+  unnest_wider(stats)
+
+# Raincloud-style plot: violin (distribution shape) + jittered points + mean/CI
+ggplot(pts, aes(x = group, y = M, color = group, fill = group)) +
+  geom_violin(alpha = 0.15, color = NA, width = 0.6) +
+  geom_jitter(width = 0.08, alpha = 0.45, size = 1.8) +
+  geom_pointrange(data = summ, aes(y = Mean, ymin = Lower, ymax = Upper),
+                  color = "black", size = 0.5, linewidth = 0.7) +
+  geom_text(data = summ, aes(y = Mean, label = percent(Mean, accuracy = 0.1)),
+            color = "black", hjust = -0.4, size = 3.5) +
+  scale_color_manual(values = GROUP_COLORS) +
+  scale_fill_manual(values = GROUP_COLORS) +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
+  labs(title = "Transcription Accuracy by Group",
+       subtitle = "Violin = distribution, dots = individuals, black = mean with 95% bootstrap CI",
+       y = "Keyword Accuracy", x = NULL) +
+  theme(legend.position = "none")
+```
+
+### Distribution overlay
+
+The overlapping density curves make it easy to see how much the three groups' distributions overlap — especially PL vs. EM.
+
+```{r fig1b-density-overlay, fig.width=7, fig.height=4}
+ggplot(pts, aes(x = M, fill = group, color = group)) +
+  geom_density(alpha = 0.25, linewidth = 0.8) +
+  geom_rug(alpha = 0.5, length = unit(0.03, "npc")) +
+  geom_vline(data = summ, aes(xintercept = Mean, color = group),
+             linetype = "dashed", linewidth = 0.7) +
+  geom_text(data = summ, aes(x = Mean, y = 0, label = percent(Mean, accuracy = 0.1)),
+            vjust = -0.5, hjust = -0.1, fontface = "bold", size = 3.5,
+            show.legend = FALSE) +
+  scale_fill_manual(values = GROUP_COLORS) +
+  scale_color_manual(values = GROUP_COLORS) +
+  scale_x_continuous(labels = percent_format(), limits = c(0, 1)) +
+  labs(title = "Distribution Overlap Across Groups",
+       subtitle = "Dashed lines = group means | Rug = individual participants",
+       x = "Mean Keyword Accuracy (per participant)", y = "Density",
+       fill = NULL, color = NULL) +
+  theme(legend.position = "top")
+```
+
+## 5.2 Figure 2: Learning trajectory
+
+```{r fig2-learning, fig.width=8, fig.height=5}
+learning <- df_all %>%
+  group_by(group, trial_order) %>%
+  summarise(stats = list(smean.cl.boot(PropKeywordsCorrect, B = 2000)),
+            .groups = "drop") %>%
+  unnest_wider(stats) %>%
+  rename(M = Mean)
+
+cat("Within-test learning trends (slope per sentence):\n")
+for (grp in levels(df_all$group)) {
+  gd <- df_all %>% filter(group == grp)
+  if (nrow(gd) == 0) next
+  fit <- lm(PropKeywordsCorrect ~ trial_order, data = gd)
+  slope <- coef(fit)["trial_order"]
+  pval  <- summary(fit)$coefficients["trial_order", "Pr(>|t|)"]
+  cat(sprintf("  %s: %+.2f pp/sentence, p = %.4f\n", grp, slope * 100, pval))
+}
+
+ggplot(learning, aes(x = trial_order, y = M, color = group)) +
+  geom_ribbon(aes(ymin = Lower, ymax = Upper, fill = group),
+              alpha = 0.15, color = NA) +
+  geom_line(linewidth = 0.8) +
+  geom_point(size = 1.5) +
+  geom_smooth(method = "lm", se = FALSE, linetype = "dashed", linewidth = 0.6) +
+  scale_color_manual(values = GROUP_COLORS) +
+  scale_fill_manual(values = GROUP_COLORS) +
+  scale_y_continuous(labels = percent_format()) +
+  labs(title = "Accuracy Across the 20 Transcription Sentences",
+       subtitle = "Dashed line = linear trend",
+       x = "Sentence number", y = "Keyword Accuracy", color = NULL, fill = NULL)
+```
+
+## 5.3 Figure 3: Adaptation benefit over No-exposure
+
+For each exposure group, we compute how much better they did compared to No-exposure. If a bar's CI does not cross zero, that group benefited from exposure. Comparing the two bars shows whether monitoring mattered.
+
+```{r fig3-benefit, fig.width=6, fig.height=4}
+df_agg <- df_all %>%
+  group_by(pid, group) %>%
+  summarise(acc = mean(PropKeywordsCorrect, na.rm = TRUE), .groups = "drop") %>%
+  mutate(group = droplevels(group), acc = as.numeric(acc))
+
+baseline_m <- mean(df_agg$acc[df_agg$group == "No-exposure"])
+
+set.seed(123)
+benefit_plot <- df_agg %>%
+  filter(group != "No-exposure") %>%
+  group_by(group) %>%
+  summarise(stats = list(smean.cl.boot(acc, B = 2000)), .groups = "drop") %>%
+  unnest_wider(stats) %>%
+  mutate(benefit = Mean - baseline_m,
+         ci_lo = Lower - baseline_m, ci_hi = Upper - baseline_m)
+
+ggplot(benefit_plot, aes(x = group, y = benefit, fill = group)) +
+  geom_col(width = 0.45, alpha = 0.85) +
+  geom_errorbar(aes(ymin = ci_lo, ymax = ci_hi), width = 0.06, linewidth = 0.6) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
+  geom_text(aes(label = sprintf("%+.1f pp", benefit * 100)), vjust = -1.2, size = 3.2) +
+  scale_fill_manual(values = GROUP_COLORS) +
+  scale_y_continuous(labels = percent_format()) +
+  coord_cartesian(ylim = c(min(benefit_plot$ci_lo, -0.03) - 0.02,
+                            max(benefit_plot$ci_hi, 0.03) + 0.04)) +
+  labs(title = "Adaptation Benefit Over No-exposure",
+       subtitle = "Bar = group mean minus No-exposure mean, error bars = 95% bootstrap CI",
+       y = "Benefit (pp)", x = NULL) +
+  theme(legend.position = "none")
+
+cat("Bootstrap CI test (does the CI exclude zero?):\n")
+for (i in seq_len(nrow(benefit_plot))) {
+  r <- benefit_plot[i, ]
+  sig <- !(r$ci_lo <= 0 & r$ci_hi >= 0)
+  cat(sprintf("  %s: %+.1f pp [%.1f, %.1f] %s\n",
+              r$group, r$benefit * 100, r$ci_lo * 100, r$ci_hi * 100,
+              if (sig) "significant" else "not significant"))
+}
+```
+
+
+## 5.4 Linear Mixed-Effects Model (LMM)
+
+### Why an LMM?
+
+Each participant contributes 20 data points (one per sentence), and each sentence is heard by multiple participants. A simple t-test would treat every row as independent, inflating the sample size. The LMM accounts for this by estimating how much variation comes from individual
+differences between people (random intercept for participant) and differences between sentences (random intercept for sentence).
+
+### Treatment coding
+
+Treatment coding converts the three-level group variable into two dummy variables using 0s and 1s. The reference group (No-exposure) gets 0 on both dummies. Each other group gets 1 on one dummy and 0 on the other:
+
+|  | Dummy 1 (EM) | Dummy 2 (PL) |
+|:--|:--|:--|
+| No-exposure (reference) | 0 | 0 |
+| Error-monitoring | 1 | 0 |
+| Passive-listening | 0 | 1 |
+
+The intercept equals the reference group's mean (No-exposure). Each coefficient is the difference between that group and the reference. R sets this up automatically with `relevel()`.
+
+This differs from sum coding (which uses -0.5 and +0.5 and puts the grand mean in the intercept). We use treatment coding because the reference group (No-exposure) is the natural baseline, and we want each coefficient to directly answer "did this group adapt?"
+
+This gives us two coefficients:
+
+- **$\beta_{PL}$ (Passive-listening)**: How much better Passive-listening performed compared to No-exposure. This is the adaptation benefit from passive listening.
+- **$\beta_{EM}$ (Error-monitoring)**: How much better Error-monitoring performed compared to No-exposure. This is the adaptation benefit from listening with error monitoring.
+
+If $\beta_{PL}$ is significant but $\beta_{EM}$ is not, it suggests monitoring blocked adaptation.
+
+As a follow-up, we refit the model with Error-monitoring as the reference to directly test whether $\beta_{PL}$ differs from $\beta_{EM}$.
+
+| $\beta_{PL}$ (PL vs NE) | $\beta_{EM}$ (EM vs NE) | PL vs EM | Conclusion |
+|:---|:---|:---|:---|
+| sig | not sig | -- | Monitoring blocks adaptation (H1) |
+| sig | sig, smaller | sig | Monitoring partially reduces adaptation |
+| sig | sig, same size | n.s. | Monitoring does not interfere (H2) |
+| not sig | not sig | -- | No adaptation from exposure (H3) |
+
+```{r lmm-treatment}
+df_lmm <- df_all %>%
+  mutate(group = factor(group, levels = GROUP_ORDER),
+         participant_id = factor(participant_id),
+         Filename = factor(Filename))
+
+# Treatment coding: No-exposure is the reference.
+# R's default contrasts for unordered factors is contr.treatment,
+# so releveling to put No-exposure first sets it as the reference.
+df_lmm$group <- relevel(df_lmm$group, ref = "No-exposure")
+
+lmm_fit <- lmer(
+  PropKeywordsCorrect ~ group + (1 | participant_id) + (1 | Filename),
+  data = df_lmm)
+
+model_summ <- summary(lmm_fit)
+print(model_summ)
+
+fe <- fixef(lmm_fit)
+cat(sprintf("\nNo-exposure mean (intercept): %.1f%%\n", 100 * fe["(Intercept)"]))
+
+# β_EM: Error-monitoring benefit over No-exposure
+em_est <- fe["groupError-monitoring"]
+em_p   <- model_summ$coefficients["groupError-monitoring", "Pr(>|t|)"]
+cat(sprintf("\nβ_EM (Error-monitoring - No-exposure): %+.1f pp, p = %.4f", em_est * 100, em_p))
+cat(if (em_p < .05) " -> significant, error monitoring led to adaptation\n"
+    else " -> not significant, no evidence of adaptation with monitoring\n")
+
+# β_PL: Passive-listening benefit over No-exposure
+pl_est <- fe["groupPassive-listening"]
+pl_p   <- model_summ$coefficients["groupPassive-listening", "Pr(>|t|)"]
+cat(sprintf("β_PL (Passive-listening - No-exposure): %+.1f pp, p = %.4f", pl_est * 100, pl_p))
+cat(if (pl_p < .05) " -> significant, passive listening led to adaptation\n"
+    else " -> not significant\n")
+```
+
+### Follow-up: Passive-listening vs. Error-monitoring
+
+To test whether the two exposure groups differ, we refit the same model with Error-monitoring as the reference. The Passive-listening coefficient then directly tests PL vs EM.
+
+```{r lmm-pl-vs-em}
+df_lmm_em <- df_lmm %>% mutate(group = relevel(group, ref = "Error-monitoring"))
+
+lmm_fit_em <- lmer(
+  PropKeywordsCorrect ~ group + (1 | participant_id) + (1 | Filename),
+  data = df_lmm_em)
+
+fe_em <- fixef(lmm_fit_em)
+summ_em <- summary(lmm_fit_em)
+
+pl_vs_em <- fe_em["groupPassive-listening"]
+pl_vs_em_p <- summ_em$coefficients["groupPassive-listening", "Pr(>|t|)"]
+
+cat(sprintf("PL - EM: %+.1f pp, p = %.4f", pl_vs_em * 100, pl_vs_em_p))
+cat(if (pl_vs_em_p < .05) " -> significant, monitoring reduced adaptation\n"
+    else " -> not significant, no evidence the two exposure groups differ\n")
+```
+
+### Figure 4: LMM coefficient forest plot
+
+This shows the three contrasts from the LMM with 95% confidence intervals. If a CI does not cross the dashed zero line, that effect is significant.
+
+```{r fig4-forest, fig.width=7, fig.height=3.5}
+# Extract the three key contrasts and their CIs from the two models
+coef_df <- tibble(
+  contrast = c("Error-monitoring\nvs No-exposure",
+               "Passive-listening\nvs No-exposure",
+               "Passive-listening\nvs Error-monitoring"),
+  estimate = c(em_est, pl_est, pl_vs_em),
+  se = c(model_summ$coefficients["groupError-monitoring", "Std. Error"],
+         model_summ$coefficients["groupPassive-listening", "Std. Error"],
+         summ_em$coefficients["groupPassive-listening", "Std. Error"]),
+  p = c(em_p, pl_p, pl_vs_em_p)
+) %>%
+  mutate(ci_lo = estimate - 1.96 * se,
+         ci_hi = estimate + 1.96 * se,
+         sig = p < .05,
+         contrast = factor(contrast, levels = rev(contrast)))
+
+ggplot(coef_df, aes(x = estimate * 100, y = contrast)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey40") +
+  geom_pointrange(aes(xmin = ci_lo * 100, xmax = ci_hi * 100, color = sig),
+                  size = 0.6, linewidth = 0.8) +
+  geom_text(aes(label = sprintf("%+.1f pp, p = %.3f", estimate * 100, p)),
+            vjust = -1, size = 3.2) +
+  scale_color_manual(values = c("TRUE" = "#2166AC", "FALSE" = "#999999"),
+                     guide = "none") +
+  labs(title = "LMM Coefficient Estimates",
+       subtitle = "95% CI; blue = significant (p < .05)",
+       x = "Effect size (percentage points)", y = NULL)
+```
+
+## 5.5 Accent-relevant keyword analysis
+
+Not all keywords are equally affected by the Spanish accent. Some keywords contain phonological contrasts that are systematically altered in Spanish-accented English (e.g., /ɪ/ → /i/ as in "ship" → "sheep", /θ/ → /t/ as in "bath" → "bat"). If adaptation reaches this level, the benefit should be concentrated in these accent-relevant keywords rather
+than spread evenly across all keywords.
+
+The trivia stimuli (exposure phase) were designed to systematically include all 6 targeted contrasts, with 4 items per contrast across the 24 targets --- so each contrast appears multiple times during exposure. The transcription sentences (test phase), by contrast, were selected from a separate recording pool that also contains challenging English contrasts for Spanish speakers, but the coverage is far less exhaustive:
+
+| Contrast | Trivia (4 items each, all minimal pairs) | Transcription keywords |
+|:---------|:----------------------------------------|:----------------------|
+| /ɪ/ → /i/ | will/wheel, sit/seat, knit/neat, still/steal | rip, ship, his, weep, feet, peel, ... (17 kw) |
+| /ʃ/ → /s/ | clash/class, Irish/iris, rushed/rust, plush/plus (coda) | she, should (onset), issue (medial) (3 kw) |
+| /k/ → /g/ | kilt/guilt, come/gum, cane/gain, cot/got | cloud, commented, consume, ... (9 kw) |
+| /θ/ → /t/ | cloth/clot, path/pat, both/boat, fourth/fort | wrath, math, bath, booth, something, with (6 kw) |
+| /v/ → /b/ | very/berry, vote/boat, valid/ballad, vent/bent | value, have, obvious (3 kw) |
+| /ʊ/ → /u/ | could/cooed, pulls/pools, would/wooed, full/fool | full, look (2 kw) |
+
+Key differences between the two sets:
+
+- The trivia items are minimal pairs where the substitution changes word identity (e.g., clash → class). The transcription keywords are scored by whether participants recognize the word at all, regardless of the contrast.
+- Coverage is uneven in the transcription (17 keywords for /ɪ/→/i/ but only 2 for /ʊ/→/u/), and each keyword typically appears once. In the trivia, each contrast appears at least 4 times.
+- Syllable position may differ (e.g., /ʃ/→/s/ appears in coda in the trivia but onset in the transcription keywords "she" and "should").
+
+We are not claiming to pinpoint which level adaptation reaches. Both speakers were rated as having a moderate-to-strong accent by our listeners, and transcription-in-noise is an established, robust measure of overall accent adaptation used in prior work (e.g., Bradlow & Bent, 2008). The accent-relevant keyword analysis is exploratory: it asks whether the benefit happens to concentrate on contrast-carrying words, but a global benefit is equally consistent with successful adaptation.
+
+```{r accent-keywords-setup}
+# Keywords that are affected by the Spanish accent, organized by contrast.
+# This table is shared with main-analysis-improved.Rmd (Experiment 1).
+keyword_contrast <- bind_rows(
+  tribble(
+    ~keyword,      ~contrast,
+    "rip",         "/ɪ/→/i/",
+    "ship",        "/ɪ/→/i/",
+    "his",         "/ɪ/→/i/",
+    "she",         "/ʃ/→/s/",
+    "should",      "/ʃ/→/s/",
+    "issue",       "/ʃ/→/s/",
+    "cloud",       "/k/→/g/",
+    "commented",   "/k/→/g/",
+    "consume",     "/k/→/g/",
+    "colleague",   "/k/→/g/",
+    "considered",  "/k/→/g/",
+    "closer",      "/k/→/g/",
+    "sky",         "/k/→/g/",
+    "comes",       "/k/→/g/",
+    "scared",      "/k/→/g/",
+    "wrath",       "/θ/→/t/",
+    "math",        "/θ/→/t/",
+    "bath",        "/θ/→/t/",
+    "booth",       "/θ/→/t/",
+    "something",   "/θ/→/t/",
+    "with",        "/θ/→/t/",
+    "value",       "/v/→/b/",
+    "have",        "/v/→/b/",
+    "obvious",     "/v/→/b/",
+    "full",        "/ʊ/→/u/",
+    "look",        "/ʊ/→/u/"
+  ),
+  tribble(
+    ~keyword,    ~contrast,
+    "weep",      "/ɪ/→/i/",
+    "feet",      "/ɪ/→/i/",
+    "peel",      "/ɪ/→/i/",
+    "bean",      "/ɪ/→/i/",
+    "lead",      "/ɪ/→/i/",
+    "leak",      "/ɪ/→/i/",
+    "heat",      "/ɪ/→/i/",
+    "greed",     "/ɪ/→/i/",
+    "sleep",     "/ɪ/→/i/",
+    "cheek",     "/ɪ/→/i/",
+    "theme",     "/ɪ/→/i/",
+    "heel",      "/ɪ/→/i/",
+    "bead",      "/ɪ/→/i/",
+    "sloth",     "/ɪ/→/i/"
+  )
+)
+
+cat(sprintf("Accent-relevant keywords: %d (across %d contrasts)\n",
+            nrow(keyword_contrast), n_distinct(keyword_contrast$contrast)))
+```
+
+```{r accent-keywords-score, fig.width=8, fig.height=5}
+# Score each keyword individually using the same pmatch logic.
+# Then tag each keyword as accent-relevant or not.
+kw_results <- df_all %>%
+  rowwise() %>%
+  mutate(
+    kw_list = list({
+      keys <- unlist(strsplit(gsub("[[:punct:]]", "", tolower(as.character(Keywords))), " "))
+      trans <- unlist(strsplit(gsub("[[:punct:]]", "", tolower(as.character(Transcription))), " "))
+      tibble(
+        keyword = keys,
+        correct = !is.na(pmatch(keys, trans)),
+        accent_relevant = keys %in% keyword_contrast$keyword
+      )
+    })
+  ) %>%
+  unnest(kw_list) %>%
+  ungroup()
+
+# Per-participant accuracy by keyword type
+kw_pp <- kw_results %>%
+  group_by(group, pid, accent_relevant) %>%
+  summarise(accuracy = mean(correct), .groups = "drop") %>%
+  mutate(kw_type = ifelse(accent_relevant, "Accent-relevant", "Non-accent"))
+
+# Summary table
+kw_pp %>%
+  group_by(group, kw_type) %>%
+  summarise(M = round(mean(accuracy), 3),
+            SD = round(sd(accuracy), 3),
+            N = n(),
+            .groups = "drop") %>%
+  knitr::kable(caption = "Accuracy by group and keyword type")
+
+# Figure: accent-relevant vs non-accent by group
+kw_summ <- kw_results %>%
+  mutate(kw_type = ifelse(accent_relevant, "Accent-relevant", "Non-accent")) %>%
+  group_by(group, kw_type) %>%
+  summarise(stats = list(smean.cl.boot(as.numeric(correct), B = 2000)),
+            .groups = "drop") %>%
+  unnest_wider(stats)
+
+ggplot(kw_summ, aes(x = group, y = Mean, fill = kw_type)) +
+  geom_col(position = position_dodge(0.7), width = 0.6, alpha = 0.85) +
+  geom_errorbar(aes(ymin = Lower, ymax = Upper),
+                position = position_dodge(0.7), width = 0.08, linewidth = 0.5) +
+  geom_text(aes(label = percent(Mean, accuracy = 0.1)),
+            position = position_dodge(0.7), vjust = -0.8, size = 3) +
+  scale_fill_manual(values = c("Accent-relevant" = "#C75B7A", "Non-accent" = "#888888")) +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
+  labs(title = "Accuracy by Keyword Type and Group",
+       subtitle = "If adaptation is accent-specific, the group difference should be larger for accent-relevant keywords",
+       y = "Keyword Accuracy", x = NULL, fill = NULL)
+```
+
+```{r accent-keywords-lmm}
+# LMM: Does keyword type interact with group?
+# A significant Group × Keyword Type interaction would mean the adaptation
+# benefit is concentrated in accent-relevant keywords.
+kw_lmm_data <- kw_results %>%
+  mutate(group = factor(group, levels = GROUP_ORDER),
+         kw_type = factor(ifelse(accent_relevant, "accent", "non_accent"),
+                          levels = c("non_accent", "accent")),
+         participant_id = factor(participant_id),
+         keyword = factor(keyword))
+
+kw_lmm_data$group <- relevel(kw_lmm_data$group, ref = "No-exposure")
+
+kw_lmm <- glmer(
+  correct ~ group * kw_type + (1 | participant_id) + (1 | keyword),
+  data = kw_lmm_data, family = binomial,
+  control = glmerControl(optimizer = "bobyqa"))
+
+cat("GLMER: correct ~ group * kw_type + (1|participant) + (1|keyword)\n\n")
+summary(kw_lmm)
+```
+
+
+# 5.5 Transcription Trial Duration (Fatigue Check)
+
+To rule out fatigue as an explanation for group differences in transcription accuracy, we compared per-participant median transcription trial durations across groups. If the longer Error-monitoring session induced fatigue, EM participants might show slower trial completion.
+
+```{r trial-duration-fatigue, fig.width=5, fig.height=3.5}
+# Per-participant median trial duration (from the merged duration data)
+dur_by_pid <- df_all %>%
+  filter(!is.na(trial_duration_sec)) %>%
+  group_by(participant_id, group) %>%
+  summarise(median_dur = median(trial_duration_sec),
+            mean_dur = mean(trial_duration_sec),
+            n_trials = n(), .groups = "drop")
+
+# Summary stats
+dur_by_pid %>%
+  group_by(group) %>%
+  summarise(N = n(),
+            M = mean(median_dur),
+            Mdn = median(median_dur),
+            SD = sd(median_dur), .groups = "drop") %>%
+  knitr::kable(digits = 1,
+               caption = "Per-participant median transcription trial duration (seconds)")
+
+# Kruskal-Wallis test (non-parametric, appropriate for skewed durations)
+kw_test <- kruskal.test(median_dur ~ group, data = dur_by_pid)
+cat(sprintf("\nKruskal-Wallis: H(%d) = %.2f, p = %.3f\n",
+            kw_test$parameter, kw_test$statistic, kw_test$p.value))
+
+# Violin plot
+ggplot(dur_by_pid, aes(x = group, y = median_dur, fill = group)) +
+  geom_violin(alpha = 0.4) +
+  geom_jitter(aes(color = group), width = 0.12, alpha = 0.5, size = 2) +
+  stat_summary(fun = median, geom = "crossbar", width = 0.35, color = "black",
+               linewidth = 0.8) +
+  scale_fill_manual(values = c("No-exposure" = "#999999",
+                                "Error-monitoring" = "#D97B3A",
+                                "Passive-listening" = "#4A90D9")) +
+  scale_color_manual(values = c("No-exposure" = "#999999",
+                                 "Error-monitoring" = "#D97B3A",
+                                 "Passive-listening" = "#4A90D9")) +
+  labs(title = "Transcription Trial Duration by Group",
+       y = "Per-participant median duration (s)", x = NULL,
+       caption = sprintf("Kruskal-Wallis p = %.2f", kw_test$p.value)) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "none",
+        plot.title = element_text(face = "bold", size = 13),
+        plot.caption = element_text(face = "italic"))
+```
+
+
+# 6. Power Analysis
+
+### What is a power analysis?
+
+Statistical power is the probability that a test will detect a real effect when one exists. The convention is 80% power — meaning if the true difference between PL and EM is X percentage points, we want at least an 80% chance of getting a significant p-value.
+
+### How this simulation works
+
+We use a simulation-based approach because our design (unequal group sizes, LMM structure) makes closed-form power formulas unreliable. For each combination of effect size and sample size, the simulation repeats 2000 times:
+
+1. Take the **observed** Error-monitoring group data as the comparison (their real per-participant mean accuracies).
+2. Simulate a hypothetical Passive-listening group of size N by drawing from a normal distribution with mean = EM mean + effect size, and SD = the pooled SD of all participant means.
+3. Run a Welch t-test comparing the simulated PL group to the real EM group.
+4. Count how often the test is significant at $\alpha$ = .05 and in the
+   predicted direction (PL > EM).
+5. Power = proportion of significant results out of 2000 simulations.
+
+### How to read the table
+
+- **Rows**: the true effect size in percentage points (pp). For context, the observed PL-vs-EM difference is currently about 3.8 pp.
+- **Columns**: sample size N for the Passive-listening group (the EM group size is fixed at its current N).
+- **Cells**: estimated power. 80% is the conventional target.
+- The **dashed line** in the plot marks 80%.
+
+### How to interpret
+
+If the true effect is small (3 pp), even N = 50 gives only ~15% power — the study would almost always fail to detect it. At 5 pp, N = 45 gives ~55%. At 7 pp, N = 35 passes 80%.
+
+```{r power, fig.width=7, fig.height=5}
+pmeans <- df_all %>%
+  group_by(group, participant_id) %>%
+  summarise(M = mean(PropKeywordsCorrect, na.rm = TRUE), .groups = "drop")
+
+bp_sd   <- sd(pmeans$M)
+em_mean <- mean(pmeans$M[pmeans$group == "Error-monitoring"])
+em_vals <- pmeans$M[pmeans$group == "Error-monitoring"]
+
+set.seed(42)
+pwr <- expand.grid(effect_pp = c(3,5,7,10,12,15),
+                   n_trivia = c(30,35,40,45,50), power = NA_real_)
+
+for (i in seq_len(nrow(pwr))) {
+  eff <- pwr$effect_pp[i] / 100; n <- pwr$n_trivia[i]; sig <- 0
+  for (s in 1:2000) {
+    sim <- rnorm(n, mean = em_mean + eff, sd = bp_sd)
+    tt <- t.test(sim, em_vals, var.equal = FALSE)
+    if (tt$p.value < 0.05 && mean(sim) > em_mean) sig <- sig + 1
+  }
+  pwr$power[i] <- sig / 2000
+}
+
+pwr %>%
+  mutate(p = sprintf("%.0f%%", power * 100)) %>%
+  select(effect_pp, n_trivia, p) %>%
+  pivot_wider(names_from = n_trivia, values_from = p, names_prefix = "N=") %>%
+  knitr::kable(col.names = c("Effect (pp)", "N=30","N=35","N=40","N=45","N=50"),
+               caption = "Power by effect size and sample size (PL vs EM)")
+
+ggplot(pwr, aes(x = n_trivia, y = power, color = factor(effect_pp),
+                group = effect_pp)) +
+  geom_line(linewidth = 1) + geom_point(size = 2.5) +
+  geom_hline(yintercept = 0.8, linetype = "dashed", color = "grey50") +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 1)) +
+  scale_color_viridis_d(option = "D", end = 0.85) +
+  labs(title = "Power: Passive-listening vs Error-monitoring",
+       x = "N (Passive-listening group)", y = "Power", color = "Effect (pp)")
+```
+
+
+# Session Info
+
+```{r session-info}
+sessionInfo()
+```
