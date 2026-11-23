@@ -376,15 +376,14 @@ ggplot(acc_str, aes(x = strength, fill = speaker)) +
 ```
 
 
-# 2. Detection Rate Analysis (GLMER) {.core}
+# 2. First-Attempt Error Detection
 
-This is a core analysis for the paper. We use a Generalized Linear Mixed-Effects Model (GLMER) because the outcome (did the participant report the error: yes/no) is binary, and we have repeated measures (multiple trials per participant, each question heard by multiple
-participants).
+This section analyzes error detection performance on participants' initial responses, before any optional replay. We use a Generalized Linear Mixed-Effects Model (GLMER) because the outcome (did the participant report the error: yes/no) is binary, and we have repeated measures (multiple trials per participant, each question heard by multiple participants).
 
 The model tests two questions:
 
-1. **Detectability (Q1)**: Are phonological errors easier or harder to detect than non-phonological errors? The ErrorType × Present interaction answers this.
-2. **Resource competition (Q2)**: When both error types are present in the same trial, does detection of either type drop? The OtherTypePresent main effect answers this. If the ErrorType × OtherTypePresent interaction is significant, competition is asymmetric (one type suffers more than the other); if not, competition is symmetric.
+1. **Detectability (Q1)**: Are phonological errors easier or harder to detect than non-phonological errors? The ErrorType x Present interaction answers this.
+2. **Resource competition (Q2)**: When both error types are present in the same trial, does detection of either type drop? The OtherTypePresent main effect answers this. If the ErrorType x OtherTypePresent interaction is significant, competition is asymmetric (one type suffers more than the other); if not, competition is symmetric.
 
 ```{r build-long-df}
 build_long_df <- function(df, attempt = "first") {
@@ -428,6 +427,8 @@ df_long_att1 <- build_long_df(df_trials, "first")
 df_long_comb <- build_long_df(df_trials, "combined")
 ```
 
+## 2.1 GLMER model and coefficients
+
 ```{r glmer-model-first-attempt}
 # Main GLMER model (first attempt)
 m_glmer <- glmer(
@@ -443,7 +444,9 @@ cat("(sum-coded ErrorType: NonPhon = +1, Phon = -1)\n\n")
 summary(m_glmer)
 ```
 
-```{r detection-rates-first-attempt-and-both-attempts}
+## 2.2 Detection rates (first attempt)
+
+```{r detection-rates-first-attempt}
 # Detection rates by condition (first attempt)
 det_rates <- df_trials %>%
   summarise(
@@ -464,37 +467,16 @@ cat(sprintf("  NonPhon in nonphon_err:%.3f\n", det_rates$nonphon_in_nonphon_err)
 cat(sprintf("  NonPhon in both_err:   %.3f\n", det_rates$nonphon_in_both_err))
 cat(sprintf("  FA Phon in correct:    %.3f\n", det_rates$fa_phon_in_correct))
 cat(sprintf("  FA NonPhon in correct: %.3f\n", det_rates$fa_nonphon_in_correct))
-
-# Combined (after re-listening) detection rates
-det_rates_comb <- df_trials %>%
-  summarise(
-    phon_in_phon_err = mean(phon_detected_comb[condition == "phon_err"]),
-    phon_in_both_err = mean(phon_detected_comb[condition == "both_err"]),
-    nonphon_in_nonphon_err = mean(nonphon_detected_comb[condition == "non_phon_err"]),
-    nonphon_in_both_err = mean(nonphon_detected_comb[condition == "both_err"]),
-    fa_phon_in_correct = mean(phon_detected_comb[condition == "correct"]),
-    fa_nonphon_in_correct = mean(nonphon_detected_comb[condition == "correct"])
-  )
-
-cat("\nDetection rates (combined, after re-listening):\n")
-cat(sprintf("  Phon in phon_err:      %.3f (first: %.3f)\n", det_rates_comb$phon_in_phon_err, det_rates$phon_in_phon_err))
-cat(sprintf("  Phon in both_err:      %.3f (first: %.3f)\n", det_rates_comb$phon_in_both_err, det_rates$phon_in_both_err))
-cat(sprintf("  NonPhon in nonphon_err:%.3f (first: %.3f)\n", det_rates_comb$nonphon_in_nonphon_err, det_rates$nonphon_in_nonphon_err))
-cat(sprintf("  NonPhon in both_err:   %.3f (first: %.3f)\n", det_rates_comb$nonphon_in_both_err, det_rates$nonphon_in_both_err))
-cat(sprintf("  FA Phon in correct:    %.3f (first: %.3f)\n", det_rates_comb$fa_phon_in_correct, det_rates$fa_phon_in_correct))
-cat(sprintf("  FA NonPhon in correct: %.3f (first: %.3f)\n", det_rates_comb$fa_nonphon_in_correct, det_rates$fa_nonphon_in_correct))
 ```
 
 
-# 3. Signal Detection Theory Analysis {.core}
+## 2.3 Signal detection decomposition (first attempt)
 
-The GLMER in Section 2 tells us whether detection rates differ, but it conflates two things: how well participants can tell errors from non-errors (sensitivity, d'), and how willing they are to say "there's an error" (response bias, criterion c).
+The GLMER tells us whether detection rates differ, but it conflates two things: how well participants can tell errors from non-errors (sensitivity, d'), and how willing they are to say "there's an error" (response bias, criterion c).
 
-Signal Detection Theory (SDT) separates these. A higher d' means the participant is genuinely better at distinguishing error-present from error-absent trials. A lower (more negative) c means the participant is more liberal — more willing to report an error even when unsure.
+Signal Detection Theory (SDT) separates these. A higher d' means the participant is genuinely better at distinguishing error-present from error-absent trials. A lower (more negative) c means the participant is more liberal, more willing to report an error even when unsure.
 
-This matters because the masking effect (Section 2's OtherTypePresent effect) could reflect a real sensitivity loss (participants truly cannot detect errors as well when two types coexist), a criterion shift (they become more cautious about reporting), or both.
-
-## 3.1 Standard SDT (d' and c by ErrorType)
+This matters because the masking effect (OtherTypePresent) could reflect a real sensitivity loss (participants truly cannot detect errors as well when two types coexist), a criterion shift (they become more cautious about reporting), or both.
 
 ```{r standard-sdt}
 # Compute d' and c for each participant × ErrorType
@@ -558,8 +540,7 @@ cat(sprintf("  Attempt 1:  p = %.4f\n", extract_pval(m1_att1, "ErrorType1")))
 cat(sprintf("  Combined:   p = %.4f\n", extract_pval(m1_comb, "ErrorType1")))
 ```
 
-
-## 3.2 SDT by Context: Single-Error vs. Both-Error Trials
+### SDT by Context: Single-Error vs. Both-Error Trials
 
 Section 2 showed that the presence of a second error type hurts detection. But *how* does it hurt? Does having both error types in a trial reduce listeners' ability to tell signal from noise (lower d'), or does it make them more reluctant to report (shift in c), or both?
 
@@ -624,7 +605,7 @@ sdt_decomp %>%
   knitr::kable(digits = 3, caption = "SDT Decomposition: d' and c by ErrorType x Context")
 ```
 
-### 2×2 Repeated-Measures Tests
+#### 2x2 Repeated-Measures Tests
 
 We have a 2 (ErrorType: Phonological vs Non-Phonological) × 2 (Context: Single vs Both) within-participant design for both d' and c. We test main effects and interactions using paired t-tests on the within-participant differences. This is equivalent to a repeated-measures ANOVA but more transparent about which comparisons drive the effects.
 
@@ -792,450 +773,13 @@ sdt_decomp %>%
 ```
 
 
-# 4. Figures {.core}
+# 3. Optional Replay Behavior
 
-## Figure 1: Sensitivity (d') by ErrorType
+Participants could optionally replay each trial's audio and revise their error report. This section characterizes how participants used this option: how often they replayed, whether replay rates varied by condition, whether the replay helped them catch errors they initially missed, and how they responded when both error types were present.
 
-```{r figure-1-dprime, fig.width=12, fig.height=6}
-# d' plot comparing Phon vs NonPhon across attempts
-p_att1_dprime <- extract_pval(m1_att1, "ErrorType1")
-p_comb_dprime <- extract_pval(m1_comb, "ErrorType1")
+Understanding replay behavior is important for two reasons. First, it bridges the first-attempt results (Section 2) and the combined results (Section 4): if replay systematically improves detection, the combined analysis captures additional perceptual information that first-attempt responses miss. Second, it informs Experiment 2's design: Experiment 2 removed the replay option, and the analyses here help justify that decision.
 
-stat_dprime <- tibble(
-  Attempt    = c("Attempt 1", "Combined (Attempts 1 & 2)"),
-  group1     = "Phonological",
-  group2     = "Non-Phonological",
-  p_label    = c(fmt_p(p_att1_dprime), fmt_p(p_comb_dprime)),
-  y.position = max(master_sdt$d_prime, na.rm = TRUE) + 0.3
-)
-
-p1 <- ggplot(master_sdt, aes(x = ErrorType, y = d_prime, fill = ErrorType)) +
-  geom_boxplot(width = 0.55, outlier.shape = NA, alpha = 0.75,
-               color = "grey30", linewidth = 0.55) +
-  geom_jitter(width = 0.12, size = 2.0, alpha = 0.40,
-              color = "grey25", show.legend = FALSE) +
-  stat_pvalue_manual(stat_dprime, label = "p_label", y.position = "y.position",
-                     tip.length = 0.015, size = 4, bracket.size = 0.6,
-                     inherit.aes = FALSE) +
-  facet_wrap(~ Attempt, labeller = labeller(Attempt = c(
-    "Attempt 1"                 = "Attempt 1 (Initial)",
-    "Combined (Attempts 1 & 2)" = "Combined (After Re-exposure)"
-  ))) +
-  scale_fill_manual(values = error_colors) +
-  scale_x_discrete(labels = c(
-    "Phonological" = "Phonological",
-    "Non-Phonological" = "Non-\nPhonological"
-  )) +
-  labs(title = "Sensitivity (d')", y = "d'", x = NULL, fill = "Error Type",
-       caption = "p-value: ErrorType main effect from GLMER | d' = 0: chance") +
-  guides(fill = guide_legend(override.aes = list(alpha = 1)))
-
-p1
-ggsave("figure1_sensitivity.tiff", p1, width = 12, height = 6, dpi = 600)
-```
-
-## Figure 2: Masking / Competition
-
-```{r figure-2-masking, fig.width=12, fig.height=6}
-# Build masking-specific data: detection rate by ErrorType x Context
-build_masking_df <- function(df_long) {
-  df_long %>%
-    filter(Present == 1) %>%
-    mutate(
-      Context = if_else(OtherTypePresent == 0,
-                        "Single Error Type", "Both Error Types")
-    ) %>%
-    group_by(participant_id, ErrorType, Context) %>%
-    summarise(hit_rate = mean(Reported), .groups = "drop")
-}
-
-calc_masking_summary <- function(mask_df) {
-  mask_df %>%
-    group_by(ErrorType, Context) %>%
-    summarise(
-      stats = list(smean.cl.boot(hit_rate)),
-      .groups = "drop"
-    ) %>%
-    unnest_wider(stats)
-}
-
-# First attempt
-master_mask_att1 <- build_masking_df(df_long_att1) %>%
-  mutate(Attempt = "Attempt 1")
-mask_means_att1  <- calc_masking_summary(master_mask_att1) %>%
-  mutate(Attempt = "Attempt 1")
-
-# Combined
-master_mask_comb <- build_masking_df(df_long_comb) %>%
-  mutate(Attempt = "Combined (Attempts 1 & 2)")
-mask_means_comb  <- calc_masking_summary(master_mask_comb) %>%
-  mutate(Attempt = "Combined (Attempts 1 & 2)")
-
-master_mask <- bind_rows(master_mask_att1, master_mask_comb)
-mask_means  <- bind_rows(mask_means_att1, mask_means_comb)
-
-# Masking p-values from GLMER (OtherTypePresent_c effect)
-p_mask_att1 <- extract_pval(m_glmer, "OtherTypePresent_c")
-m_comb_full <- glmer(
-  Reported ~ ErrorType1 * Present_c + ErrorType1 * OtherTypePresent_c +
-    (1 | participant_id) + (1 | question),
-  data    = df_long_comb,
-  family  = binomial,
-  control = glmerControl(optimizer = "bobyqa")
-)
-p_mask_comb <- extract_pval(m_comb_full, "OtherTypePresent_c")
-
-cat("Combined (Attempts 1 & 2) GLMER — full model summary:\n")
-cat("Model: Reported ~ ErrorType * Present + ErrorType * OtherTypePresent\n\n")
-summary(m_comb_full)
-
-stat_mask <- tibble(
-  Attempt    = c("Attempt 1", "Combined (Attempts 1 & 2)"),
-  group1     = "Single Error Type",
-  group2     = "Both Error Types",
-  p_label    = c(fmt_p(p_mask_att1), fmt_p(p_mask_comb)),
-  y.position = c(1.05, 1.05)
-)
-
-p2 <- ggplot(mask_means, aes(x = Context, y = Mean,
-                              color = ErrorType, group = ErrorType)) +
-  geom_jitter(data = master_mask, aes(y = hit_rate),
-              width = 0.06, height = 0, size = 1.8, alpha = 0.25,
-              show.legend = FALSE) +
-  geom_ribbon(aes(ymin = Lower, ymax = Upper, fill = ErrorType),
-              alpha = 0.18, color = NA) +
-  geom_line(linewidth = 1.2) +
-  geom_point(size = 3.5, shape = 19) +
-  stat_pvalue_manual(stat_mask, label = "p_label", y.position = "y.position",
-                     tip.length = 0.015, size = 4, bracket.size = 0.6,
-                     inherit.aes = FALSE) +
-  facet_wrap(~ Attempt, labeller = labeller(Attempt = c(
-    "Attempt 1"                 = "Attempt 1 (Initial)",
-    "Combined (Attempts 1 & 2)" = "Combined (After Re-exposure)"
-  ))) +
-  scale_color_manual(values = error_colors) +
-  scale_fill_manual(values = error_colors) +
-  scale_y_continuous(labels = percent_format(), limits = c(0, 1.15),
-                     breaks = seq(0, 1, 0.25)) +
-  scale_x_discrete(labels = c("Single Error Type" = "Single\nError Type",
-                               "Both Error Types"  = "Both\nError Types")) +
-  labs(y = "Detection Rate", x = NULL, color = "Error Type", fill = "Error Type",
-       caption = "Downward slope = masking (detection cost of adding a second error)") +
-  guides(color = guide_legend(override.aes = list(alpha = 1, size = 3)),
-         fill = "none") +
-  theme(legend.text = element_text(size = 11), legend.title = element_text(size = 11))
-
-p2
-ggsave("figure2_masking.tiff", p2, width = 12, height = 6, dpi = 600)
-```
-
-```{r fig1-fig2-combined, fig.width=18, fig.height=8}
-p3 <- (p1 | p2) +
-  plot_annotation(
-    tag_levels = "A",
-    theme = theme(plot.tag = element_text(size = 16, face = "bold"))
-  )
-p3
-```
-
-## Figure 3: SDT by ErrorType × Context (d' and c)
-
-```{r figure-3-sdt-decomposition, fig.width=14, fig.height=6}
-# Panel A: d'
-decomp_d_summary <- sdt_decomp %>%
-  group_by(ErrorType, Context) %>%
-  summarise(
-    M  = mean(d_prime),
-    SE = sd(d_prime) / sqrt(n()),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    ErrorType = factor(ErrorType, levels = c("Phonological", "Non-Phonological")),
-    Context   = factor(Context, levels = c("Single", "Both"))
-  )
-
-pa <- ggplot(decomp_d_summary,
-             aes(x = Context, y = M, fill = ErrorType, alpha = Context)) +
-  geom_col(position = position_dodge(width = 0.8), width = 0.7,
-           color = "white", linewidth = 0.8) +
-  geom_errorbar(aes(ymin = M - SE, ymax = M + SE),
-                position = position_dodge(width = 0.8), width = 0.2,
-                linewidth = 0.8) +
-  scale_fill_manual(values = error_colors) +
-  scale_alpha_manual(values = c("Single" = 0.9, "Both" = 0.5), guide = "none") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.5) +
-  labs(title = "A. Sensitivity (d')", y = "d'", x = "Error Context",
-       fill = "Error Type") +
-  theme(legend.position = "top")
-
-# Panel B: c
-decomp_c_summary <- sdt_decomp %>%
-  group_by(ErrorType, Context) %>%
-  summarise(
-    M  = mean(c_bias),
-    SE = sd(c_bias) / sqrt(n()),
-    .groups = "drop"
-  ) %>%
-  mutate(
-    ErrorType = factor(ErrorType, levels = c("Phonological", "Non-Phonological")),
-    Context   = factor(Context, levels = c("Single", "Both"))
-  )
-
-pb <- ggplot(decomp_c_summary,
-             aes(x = Context, y = M, fill = ErrorType, alpha = Context)) +
-  geom_col(position = position_dodge(width = 0.8), width = 0.7,
-           color = "white", linewidth = 0.8) +
-  geom_errorbar(aes(ymin = M - SE, ymax = M + SE),
-                position = position_dodge(width = 0.8), width = 0.2,
-                linewidth = 0.8) +
-  scale_fill_manual(values = error_colors) +
-  scale_alpha_manual(values = c("Single" = 0.9, "Both" = 0.5), guide = "none") +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.5) +
-  annotate("text", x = 0.5, y = 0.02, label = "Neutral",
-           fontface = "italic", size = 3.5, color = "grey40") +
-  labs(title = "B. Criterion (c)", y = "c (bias)", x = "Error Context",
-       fill = "Error Type",
-       caption = "Positive c = conservative (reluctant to report)") +
-  theme(legend.position = "top")
-
-p_decomp <- pa | pb
-p_decomp + plot_annotation(
-  title = "SDT by Context: Single-Error vs. Both-Error Trials",
-  subtitle = "Does the masking effect reflect sensitivity loss (d') or criterion shift (c)?",
-  theme = theme(
-    plot.title = element_text(size = 13, face = "bold"),
-    plot.subtitle = element_text(size = 10, color = "grey40")
-  )
-)
-
-ggsave("figure3_sdt_decomposition.tiff", p_decomp, width = 14, height = 6, dpi = 600)
-```
-
-## Bias (c) by ErrorType
-
-```{r appendix-bias-plot, fig.width=10, fig.height=6}
-p_att1_bias <- extract_pval(m1_att1, "ErrorType1")
-p_comb_bias <- extract_pval(m1_comb, "ErrorType1")
-
-stat_bias <- tibble(
-  Attempt    = c("Attempt 1", "Combined (Attempts 1 & 2)"),
-  group1     = "Phonological",
-  group2     = "Non-Phonological",
-  p_label    = c(fmt_p(p_att1_bias), fmt_p(p_comb_bias)),
-  y.position = max(master_sdt$c_bias, na.rm = TRUE) + 0.25
-)
-
-p4 <- ggplot(master_sdt, aes(x = ErrorType, y = c_bias, fill = ErrorType)) +
-  geom_boxplot(width = 0.55, outlier.shape = NA, alpha = 0.75,
-               color = "grey30", linewidth = 0.55) +
-  geom_jitter(width = 0.12, size = 2.0, alpha = 0.40,
-              color = "grey25", show.legend = FALSE) +
-  stat_pvalue_manual(stat_bias, label = "p_label", y.position = "y.position",
-                     tip.length = 0.015, size = 4, bracket.size = 0.6,
-                     inherit.aes = FALSE) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.7) +
-  annotate("text", x = 0.55, y = 0, label = "Neutral",
-           vjust = -0.6, fontface = "italic", size = 3.5, color = "grey40") +
-  facet_wrap(~ Attempt, labeller = labeller(Attempt = c(
-    "Attempt 1"                 = "Attempt 1\n(Initial)",
-    "Combined (Attempts 1 & 2)" = "Combined\n(After Re-exposure)"
-  ))) +
-  scale_fill_manual(values = error_colors) +
-  scale_x_discrete(labels = c("Phonological" = "Phonological",
-                               "Non-Phonological" = "Non-\nPhonological")) +
-  labs(title = "Response Bias (c)", y = "Bias (c)", x = NULL, fill = "Error Type",
-       subtitle = "Positive = conservative (reluctant to report) | Negative = liberal",
-       caption = "p-value: ErrorType main effect from GLMER | c = 0: neutral bias") +
-  guides(fill = guide_legend(override.aes = list(alpha = 1)))
-
-p4
-```
-
-
-# 5. Stopping Rule Analysis {.supplementary}
-
-In both-error trials, participants had two attempts to report errors. This section asks: when both errors are present, do participants catch both on their first attempt, or do they typically stop after detecting one? The stopping rate tells us whether the resource competition from Section 2 manifests as a "one-and-done" strategy.
-
-In both_err trials, do participants detect both errors or stop after detecting one?
-
-```{r stopping-rule}
-both_err_trials <- df_trials %>% filter(condition == "both_err")
-
-cat(sprintf("Both_err trials: %d from %d participants\n\n",
-            nrow(both_err_trials), n_distinct(both_err_trials$participant_id)))
-
-# Classify first-attempt responses
-stopping_first <- both_err_trials %>%
-  mutate(
-    response_pattern = case_when(
-      err_type_first %in% c("both", "both?")          ~ "detected_both",
-      err_type_first %in% c("p", "p?", "otherp")      ~ "only_phon",
-      err_type_first %in% c("np", "np?", "othernp")   ~ "only_nonphon",
-      err_reported_first == "y"                        ~ "reported_other",
-      TRUE                                             ~ "missed_both"
-    )
-  )
-
-cat("First-attempt response patterns in both_err condition:\n")
-stopping_first %>%
-  count(response_pattern) %>%
-  mutate(pct = 100 * n / sum(n)) %>%
-  arrange(desc(n)) %>%
-  knitr::kable(digits = 1)
-
-# Of those who detected at least one, what fraction detected both?
-detected_any <- stopping_first %>%
-  filter(response_pattern %in% c("detected_both", "only_phon", "only_nonphon"))
-
-if (nrow(detected_any) > 0) {
-  n_both <- sum(detected_any$response_pattern == "detected_both")
-  n_one  <- sum(detected_any$response_pattern != "detected_both")
-  cat(sprintf("\nOf trials with >=1 error detected (N=%d):\n", nrow(detected_any)))
-  cat(sprintf("  Detected both: %d (%.1f%%)\n", n_both, 100 * n_both / nrow(detected_any)))
-  cat(sprintf("  Stopped at one: %d (%.1f%%)\n", n_one, 100 * n_one / nrow(detected_any)))
-  cat(sprintf("    Only phon:    %d\n", sum(detected_any$response_pattern == "only_phon")))
-  cat(sprintf("    Only nonphon: %d\n", sum(detected_any$response_pattern == "only_nonphon")))
-}
-
-# Combined (first + second attempt)
-stopping_comb <- both_err_trials %>%
-  mutate(
-    detected_phon_comb = phon_detected_comb,
-    detected_nonphon_comb = nonphon_detected_comb,
-    response_pattern_comb = case_when(
-      detected_phon_comb & detected_nonphon_comb ~ "detected_both",
-      detected_phon_comb                         ~ "only_phon",
-      detected_nonphon_comb                      ~ "only_nonphon",
-      err_reported_first == "y" | err_reported_second == "y" ~ "reported_other",
-      TRUE                                       ~ "missed_both"
-    )
-  )
-
-cat("\nCombined (first + second attempt) response patterns:\n")
-stopping_comb %>%
-  count(response_pattern_comb) %>%
-  mutate(pct = 100 * n / sum(n)) %>%
-  arrange(desc(n)) %>%
-  knitr::kable(digits = 1)
-```
-
-
-# 6. Learning Effects in Error Detection {.supplementary}
-
-Does error detection change across the 24 target trials?
-
-```{r learning-detection}
-# Trial position effects on detection
-learning_df <- df_long_att1 %>%
-  filter(Present == 1) %>%
-  left_join(
-    df_trials %>% select(participant_id, question, trial_position),
-    by = c("participant_id", "question")
-  )
-
-# Overall trend
-m_learn <- glmer(
-  Reported ~ scale(trial_position) + ErrorType1 +
-    (1 | participant_id) + (1 | question),
-  data    = learning_df,
-  family  = binomial,
-  control = glmerControl(optimizer = "bobyqa")
-)
-
-cat("Learning effect in error detection:\n")
-cat("GLMER: Reported ~ trial_position + ErrorType + (1|participant) + (1|question)\n\n")
-summary(m_learn)
-
-# Mean detection rate by trial quartile
-learning_df %>%
-  mutate(quartile = cut(trial_position, breaks = c(0, 6, 12, 18, 24),
-                        labels = c("Q1 (1-6)", "Q2 (7-12)", "Q3 (13-18)", "Q4 (19-24)"))) %>%
-  group_by(quartile, ErrorType) %>%
-  summarise(detection_rate = mean(Reported), n = n(), .groups = "drop") %>%
-  pivot_wider(names_from = ErrorType, values_from = c(detection_rate, n)) %>%
-  knitr::kable(digits = 3, caption = "Detection rate by trial position quartile")
-```
-
-
-# 7. Sequential Trial Effects {.supplementary}
-
-Does what a participant reported on the previous trial influence their response on the current trial? For example, if they just detected a phonological error, are they more likely to report one on the next trial (a kind of perseveration or priming)?
-
-Does the condition or detection outcome on trial N affect trial N+1?
-
-```{r sequential-effects}
-# Build transition data from consecutive target trials
-transitions <- df_trials %>%
-  arrange(participant_id, trial_position) %>%
-  group_by(participant_id) %>%
-  mutate(
-    # Previous trial info
-    prev_condition     = lag(condition),
-    prev_reported      = lag(err_reported_first == "y"),
-    prev_type          = lag(err_type_first),
-    prev_phon_detected = lag(phon_detected_first),
-    prev_nonphon_detected = lag(nonphon_detected_first)
-  ) %>%
-  ungroup() %>%
-  filter(!is.na(prev_condition))
-
-cat(sprintf("Total target-to-target transitions: %d from %d participants\n\n",
-            nrow(transitions), n_distinct(transitions$participant_id)))
-
-# Analysis 1: Does reporting on trial N predict reporting on N+1?
-any_detected_curr <- transitions %>%
-  mutate(reported_any = err_reported_first == "y")
-
-after_report <- any_detected_curr %>%
-  filter(prev_reported == TRUE) %>%
-  summarise(rate = mean(reported_any), n = n())
-
-after_no_report <- any_detected_curr %>%
-  filter(prev_reported == FALSE) %>%
-  summarise(rate = mean(reported_any), n = n())
-
-# Chi-squared test
-tab <- table(
-  Previous = any_detected_curr$prev_reported,
-  Current  = any_detected_curr$reported_any
-)
-chi_res <- chisq.test(tab)
-
-cat("Does reporting on trial N predict reporting on N+1?\n")
-cat(sprintf("  After REPORTING error:     %.3f report on next (N=%d)\n",
-            after_report$rate, after_report$n))
-cat(sprintf("  After NOT reporting error: %.3f report on next (N=%d)\n",
-            after_no_report$rate, after_no_report$n))
-cat(sprintf("  Chi-squared: X2=%.3f, p=%.4f\n\n", chi_res$statistic, chi_res$p.value))
-
-# Analysis 2: Does error type on trial N affect what's reported on N+1?
-cat("Does error type on trial N affect detection on N+1?\n")
-
-prev_type_effects <- any_detected_curr %>%
-  mutate(
-    prev_category = case_when(
-      prev_reported & prev_type %in% c("p", "p?")                  ~ "Phon detected",
-      prev_reported & prev_type %in% c("np", "np?")                ~ "NonPhon detected",
-      prev_reported & prev_type %in% c("both", "both?")            ~ "Both detected",
-      !prev_reported                                                ~ "Nothing detected",
-      TRUE                                                          ~ "Other"
-    )
-  ) %>%
-  filter(prev_category != "Other") %>%
-  group_by(prev_category) %>%
-  summarise(
-    next_report_rate = mean(reported_any),
-    n = n(),
-    .groups = "drop"
-  )
-
-prev_type_effects %>%
-  knitr::kable(digits = 3, caption = "Next-trial report rate by previous detection type")
-```
-
-# 8. Re-exposure / Replay Analysis {.supplementary}
-
-Participants could choose to replay each trial's audio for a second attempt. This section asks: how often did they replay, did replay rates differ by condition, and did replay improve detection? This is relevant to Experiment 2's design: Experiment 2 removed the replay option to ensure equal exposure across participants.
+## 3.1 Replay usage
 
 ```{r reexposure-rates}
 # Count re-exposure per participant
@@ -1278,6 +822,11 @@ cat("\nReplay rate by condition:\n")
 reexposure_by_cond %>%
   knitr::kable(digits = 3)
 ```
+
+
+## 3.2 Does replay improve detection?
+
+For trials where participants chose to replay, we compare their first-attempt detection rate to their combined (first + second attempt) detection rate. We also test whether the benefit of replay differs by error type using an ErrorType x Presentation (first vs. combined) GLMER.
 
 ```{r reexposure-detection-change}
 # Does re-exposure improve detection?
@@ -1346,11 +895,224 @@ cat(sprintf("\n  ErrorType x Presentation interaction: p = %.4f\n", p_interactio
 ```
 
 
-# 9. Transcription Analysis {.core}
+## 3.3 Stopping rule in both-error trials
+
+In both-error trials, participants had two attempts to report errors. This section asks: when both errors are present, do participants catch both on their first attempt, or do they typically stop after detecting one? The stopping rate tells us whether the resource competition from Section 2 manifests as a "one-and-done" strategy.
+
+```{r stopping-rule}
+both_err_trials <- df_trials %>% filter(condition == "both_err")
+
+cat(sprintf("Both_err trials: %d from %d participants\n\n",
+            nrow(both_err_trials), n_distinct(both_err_trials$participant_id)))
+
+# Classify first-attempt responses
+stopping_first <- both_err_trials %>%
+  mutate(
+    response_pattern = case_when(
+      err_type_first %in% c("both", "both?")          ~ "detected_both",
+      err_type_first %in% c("p", "p?", "otherp")      ~ "only_phon",
+      err_type_first %in% c("np", "np?", "othernp")   ~ "only_nonphon",
+      err_reported_first == "y"                        ~ "reported_other",
+      TRUE                                             ~ "missed_both"
+    )
+  )
+
+cat("First-attempt response patterns in both_err condition:\n")
+stopping_first %>%
+  count(response_pattern) %>%
+  mutate(pct = 100 * n / sum(n)) %>%
+  arrange(desc(n)) %>%
+  knitr::kable(digits = 1)
+
+# Of those who detected at least one, what fraction detected both?
+detected_any <- stopping_first %>%
+  filter(response_pattern %in% c("detected_both", "only_phon", "only_nonphon"))
+
+if (nrow(detected_any) > 0) {
+  n_both <- sum(detected_any$response_pattern == "detected_both")
+  n_one  <- sum(detected_any$response_pattern != "detected_both")
+  cat(sprintf("\nOf trials with >=1 error detected (N=%d):\n", nrow(detected_any)))
+  cat(sprintf("  Detected both: %d (%.1f%%)\n", n_both, 100 * n_both / nrow(detected_any)))
+  cat(sprintf("  Stopped at one: %d (%.1f%%)\n", n_one, 100 * n_one / nrow(detected_any)))
+  cat(sprintf("    Only phon:    %d\n", sum(detected_any$response_pattern == "only_phon")))
+  cat(sprintf("    Only nonphon: %d\n", sum(detected_any$response_pattern == "only_nonphon")))
+}
+
+# Combined (first + second attempt)
+stopping_comb <- both_err_trials %>%
+  mutate(
+    detected_phon_comb = phon_detected_comb,
+    detected_nonphon_comb = nonphon_detected_comb,
+    response_pattern_comb = case_when(
+      detected_phon_comb & detected_nonphon_comb ~ "detected_both",
+      detected_phon_comb                         ~ "only_phon",
+      detected_nonphon_comb                      ~ "only_nonphon",
+      err_reported_first == "y" | err_reported_second == "y" ~ "reported_other",
+      TRUE                                       ~ "missed_both"
+    )
+  )
+
+cat("\nCombined (first + second attempt) response patterns:\n")
+stopping_comb %>%
+  count(response_pattern_comb) %>%
+  mutate(pct = 100 * n / sum(n)) %>%
+  arrange(desc(n)) %>%
+  knitr::kable(digits = 1)
+```
+
+
+# 4. Combined (After Re-listening) Error Detection
+
+This section reports error detection performance incorporating both first-attempt and second-attempt (after optional replay) responses. The combined measure captures errors that participants initially missed but detected upon re-listening, and tests whether the masking effect observed in Section 2 persists even after participants have had additional exposure to the stimulus.
+
+## 4.1 Combined GLMER and detection rates
+
+```{r glmer-combined}
+# Combined (Attempts 1 & 2) GLMER
+m_comb_full <- glmer(
+  Reported ~ ErrorType1 * Present_c + ErrorType1 * OtherTypePresent_c +
+    (1 | participant_id) + (1 | question),
+  data    = df_long_comb,
+  family  = binomial,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+cat("Combined (Attempts 1 & 2) GLMER\n")
+cat("Model: Reported ~ ErrorType * Present + ErrorType * OtherTypePresent\n\n")
+summary(m_comb_full)
+```
+
+```{r detection-rates-combined}
+# Detection rates (combined, after re-listening)
+det_rates_comb <- df_trials %>%
+  summarise(
+    phon_in_phon_err = mean(phon_detected_comb[condition == "phon_err"]),
+    phon_in_both_err = mean(phon_detected_comb[condition == "both_err"]),
+    nonphon_in_nonphon_err = mean(nonphon_detected_comb[condition == "non_phon_err"]),
+    nonphon_in_both_err = mean(nonphon_detected_comb[condition == "both_err"]),
+    fa_phon_in_correct = mean(phon_detected_comb[condition == "correct"]),
+    fa_nonphon_in_correct = mean(nonphon_detected_comb[condition == "correct"])
+  )
+
+cat("Detection rates (combined, after re-listening):\n")
+cat(sprintf("  Phon in phon_err:      %.3f (first: %.3f)\n", det_rates_comb$phon_in_phon_err, det_rates$phon_in_phon_err))
+cat(sprintf("  Phon in both_err:      %.3f (first: %.3f)\n", det_rates_comb$phon_in_both_err, det_rates$phon_in_both_err))
+cat(sprintf("  NonPhon in nonphon_err:%.3f (first: %.3f)\n", det_rates_comb$nonphon_in_nonphon_err, det_rates$nonphon_in_nonphon_err))
+cat(sprintf("  NonPhon in both_err:   %.3f (first: %.3f)\n", det_rates_comb$nonphon_in_both_err, det_rates$nonphon_in_both_err))
+cat(sprintf("  FA Phon in correct:    %.3f (first: %.3f)\n", det_rates_comb$fa_phon_in_correct, det_rates$fa_phon_in_correct))
+cat(sprintf("  FA NonPhon in correct: %.3f (first: %.3f)\n", det_rates_comb$fa_nonphon_in_correct, det_rates$fa_nonphon_in_correct))
+```
+
+
+## 4.2 Does masking persist after re-listening?
+
+```{r masking-persistence}
+p_mask_att1 <- extract_pval(m_glmer, "OtherTypePresent_c")
+p_mask_comb <- extract_pval(m_comb_full, "OtherTypePresent_c")
+
+cat("Masking effect (OtherTypePresent) across attempts:\n")
+cat(sprintf("  First attempt: p = %.4f\n", p_mask_att1))
+cat(sprintf("  Combined:      p = %.4f\n", p_mask_comb))
+cat(sprintf("\nThe masking effect %s after re-listening.\n",
+            if (p_mask_comb < .05) "persists" else "does not persist"))
+```
+
+
+# 5. Robustness: Replay Rate as Covariate
+
+Participants who replay more frequently may differ systematically in engagement, conscientiousness, or strategy. To confirm that the core error detection effects are not driven by these individual differences, we add each participant's overall replay rate (proportion of trials replayed, centered) as a covariate in both the first-attempt and combined GLMERs. We also include its interaction with OtherTypePresent to test whether more-engaged participants show less masking.
+
+## 5.1 First-attempt GLMER with replay rate
+
+```{r robustness-replay-first}
+# Compute per-participant replay rate
+replay_rates <- df_trials %>%
+  group_by(participant_id) %>%
+  summarise(replay_rate = mean(second_attempt_used), .groups = "drop")
+
+# Merge and center
+df_long_att1_replay <- df_long_att1 %>%
+  left_join(replay_rates, by = "participant_id") %>%
+  mutate(replay_rate_c = replay_rate - mean(replay_rate))
+
+# GLMER with replay covariate
+m_glmer_replay_att1 <- glmer(
+  Reported ~ ErrorType1 * Present_c + ErrorType1 * OtherTypePresent_c +
+    replay_rate_c + replay_rate_c : OtherTypePresent_c +
+    (1 | participant_id) + (1 | question),
+  data    = df_long_att1_replay,
+  family  = binomial,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+cat("First-attempt GLMER with replay rate covariate:\n\n")
+summary(m_glmer_replay_att1)
+```
+
+## 5.2 Combined GLMER with replay rate
+
+```{r robustness-replay-combined}
+df_long_comb_replay <- df_long_comb %>%
+  left_join(replay_rates, by = "participant_id") %>%
+  mutate(replay_rate_c = replay_rate - mean(replay_rate))
+
+m_glmer_replay_comb <- glmer(
+  Reported ~ ErrorType1 * Present_c + ErrorType1 * OtherTypePresent_c +
+    replay_rate_c + replay_rate_c : OtherTypePresent_c +
+    (1 | participant_id) + (1 | question),
+  data    = df_long_comb_replay,
+  family  = binomial,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+cat("Combined GLMER with replay rate covariate:\n\n")
+summary(m_glmer_replay_comb)
+```
+
+## 5.3 Summary: core effects with and without replay covariate
+
+```{r robustness-comparison}
+base_att1  <- summary(m_glmer)$coefficients
+base_comb  <- summary(m_comb_full)$coefficients
+ctrl_att1  <- summary(m_glmer_replay_att1)$coefficients
+ctrl_comb  <- summary(m_glmer_replay_comb)$coefficients
+
+key_terms <- c("OtherTypePresent_c", "ErrorType1", "ErrorType1:OtherTypePresent_c")
+
+cat("Comparison: do the core effects survive after controlling for replay rate?\n\n")
+cat("FIRST ATTEMPT:\n")
+for (term in key_terms) {
+  cat(sprintf("  %s:\n", term))
+  cat(sprintf("    Base:  \u03b2\u0302 = %.3f, p = %.4f\n", base_att1[term, "Estimate"], base_att1[term, "Pr(>|z|)"]))
+  cat(sprintf("    +Replay: \u03b2\u0302 = %.3f, p = %.4f\n", ctrl_att1[term, "Estimate"], ctrl_att1[term, "Pr(>|z|)"]))
+}
+
+cat("\nCOMBINED:\n")
+for (term in key_terms) {
+  cat(sprintf("  %s:\n", term))
+  cat(sprintf("    Base:  \u03b2\u0302 = %.3f, p = %.4f\n", base_comb[term, "Estimate"], base_comb[term, "Pr(>|z|)"]))
+  cat(sprintf("    +Replay: \u03b2\u0302 = %.3f, p = %.4f\n", ctrl_comb[term, "Estimate"], ctrl_comb[term, "Pr(>|z|)"]))
+}
+
+cat("\nReplay rate effects:\n")
+cat(sprintf("  First attempt - main effect: \u03b2\u0302 = %.3f, p = %.4f\n",
+            ctrl_att1["replay_rate_c", "Estimate"], ctrl_att1["replay_rate_c", "Pr(>|z|)"]))
+cat(sprintf("  First attempt - replay x OTP: \u03b2\u0302 = %.3f, p = %.4f\n",
+            ctrl_att1["OtherTypePresent_c:replay_rate_c", "Estimate"],
+            ctrl_att1["OtherTypePresent_c:replay_rate_c", "Pr(>|z|)"]))
+cat(sprintf("  Combined - main effect: \u03b2\u0302 = %.3f, p = %.4f\n",
+            ctrl_comb["replay_rate_c", "Estimate"], ctrl_comb["replay_rate_c", "Pr(>|z|)"]))
+cat(sprintf("  Combined - replay x OTP: \u03b2\u0302 = %.3f, p = %.4f\n",
+            ctrl_comb["OtherTypePresent_c:replay_rate_c", "Estimate"],
+            ctrl_comb["OtherTypePresent_c:replay_rate_c", "Pr(>|z|)"]))
+```
+
+
+# 6. Transcription (Accent Adaptation)
 
 After the error detection task, participants transcribed 20 sentences in noise spoken by a different Spanish-accented speaker. This tests whether the error-monitoring task led to accent adaptation: if error monitoring consumed resources that would otherwise support adaptation, the Error-monitoring group should not transcribe better than the No-exposure group (who had no prior exposure to Spanish-accented speech).
 
-This section uses the same scoring function and methodology as Experiment 2's three-group-comparison.Rmd.
+This section uses the same scoring function and methodology as Exp2-three-group-comparison.Rmd.
 
 ```{r transcription-helpers}
 # Text substitution helper
@@ -1488,7 +1250,7 @@ df_transcription_all %>%
   knitr::kable(caption = "Transcription data summary")
 ```
 
-## 9.1 Group Comparison (No-exposure vs. Error-monitoring)
+## 6.1 Group Comparison (No-exposure vs. Error-monitoring)
 
 ```{r transcription-group-comparison, fig.width=10, fig.height=6}
 # Per-participant means
@@ -1558,7 +1320,35 @@ cat(sprintf("Adaptation effect: %+.1f%%\n", 100 * slope))
 cat(sprintf("LMM p-value: %.4f (%s)\n", p_lmm, if (p_lmm < .05) "SIGNIFICANT" else "n.s."))
 ```
 
-## 9.2 Learning Effects in Transcription
+
+## 6.2 Replay rate as covariate in transcription LMM
+
+The bivariate correlation between replay rate and transcription accuracy is reported below (Section 8.3). Here we test replay rate as a covariate in the trial-level transcription LMM, which controls for the sentence-level structure. Because replay rate is defined only for Error-monitoring participants (the No-exposure group did not do the trivia task), this model is restricted to EM participants and tests whether replay rate predicts transcription accuracy within the EM group.
+
+```{r transcription-replay-covariate}
+# EM-only transcription LMM with replay rate covariate
+df_lmm_em_replay <- df_transcription_all %>%
+  filter(batch_id == "Error-monitoring") %>%
+  left_join(reexposure_summary %>% select(participant_id, replay_rate),
+            by = "participant_id") %>%
+  mutate(replay_rate_c = replay_rate - mean(replay_rate, na.rm = TRUE),
+         participant_id = factor(participant_id),
+         Filename = factor(Filename))
+
+lmm_trans_replay <- lmer(
+  PropKeywordsCorrect ~ replay_rate_c + (1 | participant_id) + (1 | Filename),
+  data = df_lmm_em_replay
+)
+
+cat("EM-only LMM: Transcription accuracy ~ replay_rate + (1|participant) + (1|sentence)\n\n")
+summary(lmm_trans_replay)
+
+replay_coef <- summary(lmm_trans_replay)$coefficients["replay_rate_c", ]
+cat(sprintf("\nReplay rate effect on transcription: \u03b2\u0302 = %.4f, t = %.3f, p = %.4f\n",
+            replay_coef["Estimate"], replay_coef["t value"], replay_coef["Pr(>|t|)"]))
+```
+
+## 6.3 Learning effects in transcription
 
 ```{r transcription-learning, fig.width=12, fig.height=6}
 # Does transcription accuracy improve across the 20 sentences?
@@ -1600,7 +1390,7 @@ p_learn
 ggsave("figure_learning_effect.tiff", p_learn, width = 12, height = 6, dpi = 300)
 ```
 
-## 9.3 Hardest Keywords
+## 6.4 Hardest keywords
 
 ```{r hardest-keywords, fig.width=12, fig.height=8}
 # Keyword-level analysis
@@ -1634,7 +1424,7 @@ p6 <- ggplot(hardest,
 p6
 ```
 
-## 9.4 Accent-Relevant vs. Non-Accent Keywords
+## 6.5 Accent-relevant vs. non-accent keywords
 
 ```{r accent-keyword-group-comparison, fig.width=12, fig.height=6}
 # keyword_contrast is defined in Section 11 setup — define it here if not yet available
@@ -1803,9 +1593,374 @@ p_kwtype
 ```
 
 
-# 10. Re-exposure x Transcription Interaction {.supplementary}
+# 7. Publication Figures
 
-Does the amount of re-exposure (replay) during the error detection task predict transcription accuracy? If more listening helps, participants who replayed more often should transcribe better. The null result here (r = -.21, p = .16) supports the design choice in Experiment 2 to remove the replay option: more exposure alone does not drive adaptation.
+
+## Figure 1: Sensitivity (d') by ErrorType
+
+```{r figure-1-dprime, fig.width=12, fig.height=6}
+# d' plot comparing Phon vs NonPhon across attempts
+p_att1_dprime <- extract_pval(m1_att1, "ErrorType1")
+p_comb_dprime <- extract_pval(m1_comb, "ErrorType1")
+
+stat_dprime <- tibble(
+  Attempt    = c("Attempt 1", "Combined (Attempts 1 & 2)"),
+  group1     = "Phonological",
+  group2     = "Non-Phonological",
+  p_label    = c(fmt_p(p_att1_dprime), fmt_p(p_comb_dprime)),
+  y.position = max(master_sdt$d_prime, na.rm = TRUE) + 0.3
+)
+
+p1 <- ggplot(master_sdt, aes(x = ErrorType, y = d_prime, fill = ErrorType)) +
+  geom_boxplot(width = 0.55, outlier.shape = NA, alpha = 0.75,
+               color = "grey30", linewidth = 0.55) +
+  geom_jitter(width = 0.12, size = 2.0, alpha = 0.40,
+              color = "grey25", show.legend = FALSE) +
+  stat_pvalue_manual(stat_dprime, label = "p_label", y.position = "y.position",
+                     tip.length = 0.015, size = 4, bracket.size = 0.6,
+                     inherit.aes = FALSE) +
+  facet_wrap(~ Attempt, labeller = labeller(Attempt = c(
+    "Attempt 1"                 = "Attempt 1 (Initial)",
+    "Combined (Attempts 1 & 2)" = "Combined (After Re-exposure)"
+  ))) +
+  scale_fill_manual(values = error_colors) +
+  scale_x_discrete(labels = c(
+    "Phonological" = "Phonological",
+    "Non-Phonological" = "Non-\nPhonological"
+  )) +
+  labs(title = "Sensitivity (d')", y = "d'", x = NULL, fill = "Error Type",
+       caption = "p-value: ErrorType main effect from GLMER | d' = 0: chance") +
+  guides(fill = guide_legend(override.aes = list(alpha = 1)))
+
+p1
+ggsave("figure1_sensitivity.tiff", p1, width = 12, height = 6, dpi = 600)
+```
+
+## Figure 2: Masking / Competition
+
+```{r figure-2-masking, fig.width=12, fig.height=6}
+# Build masking-specific data: detection rate by ErrorType x Context
+build_masking_df <- function(df_long) {
+  df_long %>%
+    filter(Present == 1) %>%
+    mutate(
+      Context = if_else(OtherTypePresent == 0,
+                        "Single Error Type", "Both Error Types")
+    ) %>%
+    group_by(participant_id, ErrorType, Context) %>%
+    summarise(hit_rate = mean(Reported), .groups = "drop")
+}
+
+calc_masking_summary <- function(mask_df) {
+  mask_df %>%
+    group_by(ErrorType, Context) %>%
+    summarise(
+      stats = list(smean.cl.boot(hit_rate)),
+      .groups = "drop"
+    ) %>%
+    unnest_wider(stats)
+}
+
+# First attempt
+master_mask_att1 <- build_masking_df(df_long_att1) %>%
+  mutate(Attempt = "Attempt 1")
+mask_means_att1  <- calc_masking_summary(master_mask_att1) %>%
+  mutate(Attempt = "Attempt 1")
+
+# Combined
+master_mask_comb <- build_masking_df(df_long_comb) %>%
+  mutate(Attempt = "Combined (Attempts 1 & 2)")
+mask_means_comb  <- calc_masking_summary(master_mask_comb) %>%
+  mutate(Attempt = "Combined (Attempts 1 & 2)")
+
+master_mask <- bind_rows(master_mask_att1, master_mask_comb)
+mask_means  <- bind_rows(mask_means_att1, mask_means_comb)
+
+# Masking p-values from GLMER (OtherTypePresent_c effect)
+p_mask_att1 <- extract_pval(m_glmer, "OtherTypePresent_c")
+# Combined GLMER (m_comb_full) was fitted in Section 4.
+p_mask_comb <- extract_pval(m_comb_full, "OtherTypePresent_c")
+
+stat_mask <- tibble(
+  Attempt    = c("Attempt 1", "Combined (Attempts 1 & 2)"),
+  group1     = "Single Error Type",
+  group2     = "Both Error Types",
+  p_label    = c(fmt_p(p_mask_att1), fmt_p(p_mask_comb)),
+  y.position = c(1.05, 1.05)
+)
+
+p2 <- ggplot(mask_means, aes(x = Context, y = Mean,
+                              color = ErrorType, group = ErrorType)) +
+  geom_jitter(data = master_mask, aes(y = hit_rate),
+              width = 0.06, height = 0, size = 1.8, alpha = 0.25,
+              show.legend = FALSE) +
+  geom_ribbon(aes(ymin = Lower, ymax = Upper, fill = ErrorType),
+              alpha = 0.18, color = NA) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 3.5, shape = 19) +
+  stat_pvalue_manual(stat_mask, label = "p_label", y.position = "y.position",
+                     tip.length = 0.015, size = 4, bracket.size = 0.6,
+                     inherit.aes = FALSE) +
+  facet_wrap(~ Attempt, labeller = labeller(Attempt = c(
+    "Attempt 1"                 = "Attempt 1 (Initial)",
+    "Combined (Attempts 1 & 2)" = "Combined (After Re-exposure)"
+  ))) +
+  scale_color_manual(values = error_colors) +
+  scale_fill_manual(values = error_colors) +
+  scale_y_continuous(labels = percent_format(), limits = c(0, 1.15),
+                     breaks = seq(0, 1, 0.25)) +
+  scale_x_discrete(labels = c("Single Error Type" = "Single\nError Type",
+                               "Both Error Types"  = "Both\nError Types")) +
+  labs(y = "Detection Rate", x = NULL, color = "Error Type", fill = "Error Type",
+       caption = "Downward slope = masking (detection cost of adding a second error)") +
+  guides(color = guide_legend(override.aes = list(alpha = 1, size = 3)),
+         fill = "none") +
+  theme(legend.text = element_text(size = 11), legend.title = element_text(size = 11))
+
+p2
+ggsave("figure2_masking.tiff", p2, width = 12, height = 6, dpi = 600)
+```
+
+```{r fig1-fig2-combined, fig.width=18, fig.height=8}
+p3 <- (p1 | p2) +
+  plot_annotation(
+    tag_levels = "A",
+    theme = theme(plot.tag = element_text(size = 16, face = "bold"))
+  )
+p3
+```
+
+## Figure 3: SDT by ErrorType × Context (d' and c)
+
+```{r figure-3-sdt-decomposition, fig.width=14, fig.height=6}
+# Panel A: d'
+decomp_d_summary <- sdt_decomp %>%
+  group_by(ErrorType, Context) %>%
+  summarise(
+    M  = mean(d_prime),
+    SE = sd(d_prime) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ErrorType = factor(ErrorType, levels = c("Phonological", "Non-Phonological")),
+    Context   = factor(Context, levels = c("Single", "Both"))
+  )
+
+pa <- ggplot(decomp_d_summary,
+             aes(x = Context, y = M, fill = ErrorType, alpha = Context)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7,
+           color = "white", linewidth = 0.8) +
+  geom_errorbar(aes(ymin = M - SE, ymax = M + SE),
+                position = position_dodge(width = 0.8), width = 0.2,
+                linewidth = 0.8) +
+  scale_fill_manual(values = error_colors) +
+  scale_alpha_manual(values = c("Single" = 0.9, "Both" = 0.5), guide = "none") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.5) +
+  labs(title = "A. Sensitivity (d')", y = "d'", x = "Error Context",
+       fill = "Error Type") +
+  theme(legend.position = "top")
+
+# Panel B: c
+decomp_c_summary <- sdt_decomp %>%
+  group_by(ErrorType, Context) %>%
+  summarise(
+    M  = mean(c_bias),
+    SE = sd(c_bias) / sqrt(n()),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    ErrorType = factor(ErrorType, levels = c("Phonological", "Non-Phonological")),
+    Context   = factor(Context, levels = c("Single", "Both"))
+  )
+
+pb <- ggplot(decomp_c_summary,
+             aes(x = Context, y = M, fill = ErrorType, alpha = Context)) +
+  geom_col(position = position_dodge(width = 0.8), width = 0.7,
+           color = "white", linewidth = 0.8) +
+  geom_errorbar(aes(ymin = M - SE, ymax = M + SE),
+                position = position_dodge(width = 0.8), width = 0.2,
+                linewidth = 0.8) +
+  scale_fill_manual(values = error_colors) +
+  scale_alpha_manual(values = c("Single" = 0.9, "Both" = 0.5), guide = "none") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.5) +
+  annotate("text", x = 0.5, y = 0.02, label = "Neutral",
+           fontface = "italic", size = 3.5, color = "grey40") +
+  labs(title = "B. Criterion (c)", y = "c (bias)", x = "Error Context",
+       fill = "Error Type",
+       caption = "Positive c = conservative (reluctant to report)") +
+  theme(legend.position = "top")
+
+p_decomp <- pa | pb
+p_decomp + plot_annotation(
+  title = "SDT by Context: Single-Error vs. Both-Error Trials",
+  subtitle = "Does the masking effect reflect sensitivity loss (d') or criterion shift (c)?",
+  theme = theme(
+    plot.title = element_text(size = 13, face = "bold"),
+    plot.subtitle = element_text(size = 10, color = "grey40")
+  )
+)
+
+ggsave("figure3_sdt_decomposition.tiff", p_decomp, width = 14, height = 6, dpi = 600)
+```
+
+## Bias (c) by ErrorType
+
+```{r appendix-bias-plot, fig.width=10, fig.height=6}
+p_att1_bias <- extract_pval(m1_att1, "ErrorType1")
+p_comb_bias <- extract_pval(m1_comb, "ErrorType1")
+
+stat_bias <- tibble(
+  Attempt    = c("Attempt 1", "Combined (Attempts 1 & 2)"),
+  group1     = "Phonological",
+  group2     = "Non-Phonological",
+  p_label    = c(fmt_p(p_att1_bias), fmt_p(p_comb_bias)),
+  y.position = max(master_sdt$c_bias, na.rm = TRUE) + 0.25
+)
+
+p4 <- ggplot(master_sdt, aes(x = ErrorType, y = c_bias, fill = ErrorType)) +
+  geom_boxplot(width = 0.55, outlier.shape = NA, alpha = 0.75,
+               color = "grey30", linewidth = 0.55) +
+  geom_jitter(width = 0.12, size = 2.0, alpha = 0.40,
+              color = "grey25", show.legend = FALSE) +
+  stat_pvalue_manual(stat_bias, label = "p_label", y.position = "y.position",
+                     tip.length = 0.015, size = 4, bracket.size = 0.6,
+                     inherit.aes = FALSE) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50", linewidth = 0.7) +
+  annotate("text", x = 0.55, y = 0, label = "Neutral",
+           vjust = -0.6, fontface = "italic", size = 3.5, color = "grey40") +
+  facet_wrap(~ Attempt, labeller = labeller(Attempt = c(
+    "Attempt 1"                 = "Attempt 1\n(Initial)",
+    "Combined (Attempts 1 & 2)" = "Combined\n(After Re-exposure)"
+  ))) +
+  scale_fill_manual(values = error_colors) +
+  scale_x_discrete(labels = c("Phonological" = "Phonological",
+                               "Non-Phonological" = "Non-\nPhonological")) +
+  labs(title = "Response Bias (c)", y = "Bias (c)", x = NULL, fill = "Error Type",
+       subtitle = "Positive = conservative (reluctant to report) | Negative = liberal",
+       caption = "p-value: ErrorType main effect from GLMER | c = 0: neutral bias") +
+  guides(fill = guide_legend(override.aes = list(alpha = 1)))
+
+p4
+```
+
+
+# 8. Supplementary Analyses
+
+## 8.1 Learning effects in error detection
+
+Does error detection change across the 24 target trials?
+
+```{r learning-detection}
+# Trial position effects on detection
+learning_df <- df_long_att1 %>%
+  filter(Present == 1) %>%
+  left_join(
+    df_trials %>% select(participant_id, question, trial_position),
+    by = c("participant_id", "question")
+  )
+
+# Overall trend
+m_learn <- glmer(
+  Reported ~ scale(trial_position) + ErrorType1 +
+    (1 | participant_id) + (1 | question),
+  data    = learning_df,
+  family  = binomial,
+  control = glmerControl(optimizer = "bobyqa")
+)
+
+cat("Learning effect in error detection:\n")
+cat("GLMER: Reported ~ trial_position + ErrorType + (1|participant) + (1|question)\n\n")
+summary(m_learn)
+
+# Mean detection rate by trial quartile
+learning_df %>%
+  mutate(quartile = cut(trial_position, breaks = c(0, 6, 12, 18, 24),
+                        labels = c("Q1 (1-6)", "Q2 (7-12)", "Q3 (13-18)", "Q4 (19-24)"))) %>%
+  group_by(quartile, ErrorType) %>%
+  summarise(detection_rate = mean(Reported), n = n(), .groups = "drop") %>%
+  pivot_wider(names_from = ErrorType, values_from = c(detection_rate, n)) %>%
+  knitr::kable(digits = 3, caption = "Detection rate by trial position quartile")
+```
+
+
+## 8.2 Sequential trial effects
+
+Does what a participant reported on the previous trial influence their response on the current trial? For example, if they just detected a phonological error, are they more likely to report one on the next trial (a kind of perseveration or priming)?
+
+```{r sequential-effects}
+# Build transition data from consecutive target trials
+transitions <- df_trials %>%
+  arrange(participant_id, trial_position) %>%
+  group_by(participant_id) %>%
+  mutate(
+    # Previous trial info
+    prev_condition     = lag(condition),
+    prev_reported      = lag(err_reported_first == "y"),
+    prev_type          = lag(err_type_first),
+    prev_phon_detected = lag(phon_detected_first),
+    prev_nonphon_detected = lag(nonphon_detected_first)
+  ) %>%
+  ungroup() %>%
+  filter(!is.na(prev_condition))
+
+cat(sprintf("Total target-to-target transitions: %d from %d participants\n\n",
+            nrow(transitions), n_distinct(transitions$participant_id)))
+
+# Analysis 1: Does reporting on trial N predict reporting on N+1?
+any_detected_curr <- transitions %>%
+  mutate(reported_any = err_reported_first == "y")
+
+after_report <- any_detected_curr %>%
+  filter(prev_reported == TRUE) %>%
+  summarise(rate = mean(reported_any), n = n())
+
+after_no_report <- any_detected_curr %>%
+  filter(prev_reported == FALSE) %>%
+  summarise(rate = mean(reported_any), n = n())
+
+# Chi-squared test
+tab <- table(
+  Previous = any_detected_curr$prev_reported,
+  Current  = any_detected_curr$reported_any
+)
+chi_res <- chisq.test(tab)
+
+cat("Does reporting on trial N predict reporting on N+1?\n")
+cat(sprintf("  After REPORTING error:     %.3f report on next (N=%d)\n",
+            after_report$rate, after_report$n))
+cat(sprintf("  After NOT reporting error: %.3f report on next (N=%d)\n",
+            after_no_report$rate, after_no_report$n))
+cat(sprintf("  Chi-squared: X2=%.3f, p=%.4f\n\n", chi_res$statistic, chi_res$p.value))
+
+# Analysis 2: Does error type on trial N affect what's reported on N+1?
+cat("Does error type on trial N affect detection on N+1?\n")
+
+prev_type_effects <- any_detected_curr %>%
+  mutate(
+    prev_category = case_when(
+      prev_reported & prev_type %in% c("p", "p?")                  ~ "Phon detected",
+      prev_reported & prev_type %in% c("np", "np?")                ~ "NonPhon detected",
+      prev_reported & prev_type %in% c("both", "both?")            ~ "Both detected",
+      !prev_reported                                                ~ "Nothing detected",
+      TRUE                                                          ~ "Other"
+    )
+  ) %>%
+  filter(prev_category != "Other") %>%
+  group_by(prev_category) %>%
+  summarise(
+    next_report_rate = mean(reported_any),
+    n = n(),
+    .groups = "drop"
+  )
+
+prev_type_effects %>%
+  knitr::kable(digits = 3, caption = "Next-trial report rate by previous detection type")
+```
+
+
+## 8.3 Re-exposure and transcription accuracy
+
+Does the amount of re-exposure (replay) during the error detection task predict transcription accuracy? If more listening helps, participants who replayed more often should transcribe better. The null result here supports the design choice in Experiment 2 to remove the replay option: more exposure alone does not drive adaptation.
 
 ```{r reexposure-transcription}
 # Correlate per-participant replay rate with transcription accuracy
@@ -1860,7 +2015,7 @@ if (nrow(reexp_trans) >= 10) {
 ```
 
 
-# 11. Similarity Metrics Analysis {.supplementary}
+## 8.4 Similarity metrics
 
 This section uses three complementary metrics to look at transcription quality beyond simple keyword accuracy:
 
@@ -1949,7 +2104,7 @@ is_pmatch <- function(keyword, trans_word) {
 ```
 
 
-## 11.1 Phonological Distance of Transcription Errors
+### 8.4.1 Phonological Distance of Transcription Errors
 
 For accent-relevant keywords that participants got wrong, are their errors closer to the accented form or the standard form?
 
@@ -2054,7 +2209,7 @@ phon_dist_df %>%
 ```
 
 
-## 11.2 Accent-Distance Effect
+### 8.4.2 Accent-Distance Effect
 
 ```{r metric2-detection-by-contrast}
 # A) Error detection rates by phonological contrast
@@ -2174,7 +2329,7 @@ if (!is.null(detection_rates) && nrow(detection_rates) >= 4) {
 ```
 
 
-## 11.3 Semantic Similarity
+### 8.4.3 Semantic Similarity
 
 ```{r metric3-semantic}
 # Reconstruct intended sentence from filename; compute three similarity metrics
